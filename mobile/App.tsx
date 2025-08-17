@@ -33,9 +33,13 @@ export default function App() {
           tabBarActiveTintColor: '#6B46C1',
           tabBarInactiveTintColor: '#9CA3AF',
           tabBarStyle: {
-            paddingBottom: 5,
-            paddingTop: 5,
-            height: 60,
+            paddingTop: 10,
+            paddingBottom: 10,
+            height: 70,
+          },
+          tabBarLabelStyle: {
+            fontSize: 12,
+            marginTop: 5,
           },
           headerStyle: {
             backgroundColor: '#6B46C1',
@@ -48,8 +52,8 @@ export default function App() {
       >
         <Tab.Screen 
           name="Home" 
-          component={HomeScreen}
-          options={{ title: 'FrenPet Home' }}
+          component={HomeScreen} 
+          options={{ title: 'FrenPet' }}
         />
         <Tab.Screen 
           name="Pet" 
