@@ -1,0 +1,27 @@
+{
+  "name": "tests",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "tsx src/test-complete-flow.ts",
+    "test:basic": "tsx src/test-basic.ts",
+    "test:flow": "tsx src/test-flow.ts",
+    "test:correct": "tsx src/test-correct.ts",
+    "test:complete": "tsx src/test-complete-flow.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "dotenv": "^17.2.1",
+    "tsx": "^4.20.4",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "ethers": "^6.15.0",
+    "viem": "^2.33.3"
+  }
+}
