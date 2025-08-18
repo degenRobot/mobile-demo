@@ -4,11 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "tsx src/test-complete-flow.ts",
-    "test:basic": "tsx src/test-basic.ts",
-    "test:flow": "tsx src/test-flow.ts",
-    "test:correct": "tsx src/test-correct.ts",
-    "test:complete": "tsx src/test-complete-flow.ts"
+    "test": "npm run test:delegation && npm run test:app-flow && npm run test:rpc && npm run test:session",
+    "test:delegation": "node test-delegation-simple.js",
+    "test:app-flow": "node test-porto-app-flow.js",
+    "test:rpc": "node test-rpc-state.js",
+    "test:session": "node test-session-keys.js"
   },
   "keywords": [],
   "author": "",
