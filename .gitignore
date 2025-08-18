@@ -59,7 +59,8 @@ tests/debug-*.js
 tests/debug-*.sh
 tests/test-complete-*.js
 tests/quick-test.js
-tests/run-*.sh
+# Keep run-tests.sh as it's our test runner
+# tests/run-*.sh
 
 # Documentation drafts and old versions
 *_REVIEW.md

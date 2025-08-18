@@ -4,11 +4,16 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "npm run test:delegation && npm run test:app-flow && npm run test:rpc && npm run test:session",
+    "test": "./run-tests.sh all",
+    "test:core": "./run-tests.sh core",
+    "test:mobile": "./run-tests.sh mobile",
+    "test:quick": "./run-tests.sh quick",
+    "test:zero-eth": "node test-zero-eth-gasless.js",
     "test:delegation": "node test-delegation-simple.js",
     "test:app-flow": "node test-porto-app-flow.js",
-    "test:rpc": "node test-rpc-state.js",
-    "test:session": "node test-session-keys.js"
+    "test:session": "node test-session-keys.js",
+    "check:relay": "node check-relay-wallets.js",
+    "debug:trace": "node trace-tx.js"
   },
   "keywords": [],
   "author": "",

@@ -1,168 +1,109 @@
-# FrenPet Tests
+# FrenPet Gasless Tests
 
-This directory contains the core integration tests for the FrenPet mobile app with Porto relay integration.
+This directory contains tests for the gasless transaction functionality using Porto relay.
 
-## Prerequisites
-
-```bash
-npm install
-```
-
-## Core Tests
-
-### 1. Porto App Flow Test
-**File:** `test-porto-app-flow.js`
-
-Complete end-to-end flow as the mobile app uses it:
-- Creates new EOA (main wallet) and session key
-- Delegates EOA to Porto with hex expiry format
-- Creates a pet using gasless transaction
-- Interacts with pet (feed/play)
-- Verifies state changes
+## 🚀 Quick Start
 
 ```bash
-node test-porto-app-flow.js
+# Run quick sanity check
+./run-tests.sh quick
+
+# Run all core tests
+./run-tests.sh core
+
+# Run mobile-specific tests
+./run-tests.sh mobile
+
+# Run everything
+./run-tests.sh all
 ```
 
-**Key Features:**
-- ✅ Correct hex expiry format for delegation
-- ✅ Both auth and exec signature handling
-- ✅ Complete pet lifecycle testing
-- ✅ Transaction status verification
+## 📋 Test Organization
 
-### 2. RPC State Test
-**File:** `test-rpc-state.js`
+### Core Gasless Tests
+These tests verify the fundamental gasless functionality:
 
-Tests reading contract state via RPC calls:
-- Reads pet data from blockchain
-- Monitors state changes
-- Batch RPC call testing
-- Contract metadata queries
+- **test-zero-eth-gasless.js** - Proves users need 0 ETH for everything
+- **test-basic-gasless.js** - Basic gasless transaction flow
+- **test-delegation-simple.js** - Account delegation to Porto
+- **test-simple-gasless.js** - Simplified gasless flow test
+
+### Mobile Flow Tests
+Tests that simulate the mobile app's transaction flow:
+
+- **test-mobile-gasless.js** - Complete mobile app flow simulation
+- **test-session-key-signing.js** - Session key signing functionality
+- **test-session-keys.js** - Comprehensive session key tests
+- **test-porto-app-flow.js** - Porto integration app flow
+
+### Utility Tests
+Supporting tests and debugging tools:
+
+- **test-eoa-signing.js** - Direct EOA signing (fallback mechanism)
+- **check-relay-wallets.js** - Check Porto relay wallet balances
+- **trace-tx.js** - Transaction tracing for debugging
+
+## 🧪 Running Individual Tests
+
+Each test can be run individually:
 
 ```bash
-node test-rpc-state.js
+# Prove zero ETH requirement
+node test-zero-eth-gasless.js
+
+# Test mobile flow
+node test-mobile-gasless.js
+
+# Check relay status
+node check-relay-wallets.js
 ```
 
-**Key Features:**
-- ✅ Pet state reading and formatting
-- ✅ Real-time state monitoring
-- ✅ Batch operations
-- ✅ Network statistics
+## ✅ Test Requirements
 
-### 3. Session Key Management Test
-**File:** `test-session-keys.js`
+- Node.js 18+ or 20+
+- Network connection to RISE testnet
+- Porto relay must be accessible
 
-Tests session key lifecycle and management:
-- Session key generation and rotation
-- Multiple session management
-- Expiry handling
-- Transaction signing with session keys
+## 🔑 Key Test Accounts
 
-```bash
-node test-session-keys.js
-```
+Tests generate fresh accounts with 0 ETH to prove gasless functionality.
+No test accounts need funding - Porto pays for everything!
 
-**Key Features:**
-- ✅ Session key lifecycle
-- ✅ Automatic expiry and cleanup
-- ✅ Multi-user session management
-- ✅ Security best practices
+## 📊 Expected Results
 
-### 4. Delegation Format Test
-**File:** `test-delegation-simple.js`
+All tests should pass with:
+- User balance: 0 ETH throughout
+- Gas paid by: Porto relay wallets
+- Transactions executed successfully
 
-Tests the critical delegation format requirements:
-- Verifies hex expiry format requirement
-- Tests different parameter formats
-- Validates Porto API responses
-- Confirms delegation with test transaction
+## 🐛 Debugging
 
-```bash
-node test-delegation-simple.js
-```
+If tests fail:
 
-**Key Features:**
-- ✅ Hex expiry format validation
-- ✅ API format documentation
-- ✅ Error case testing
-- ✅ Delegation verification
+1. **Check Porto relay status**:
+   ```bash
+   node check-relay-wallets.js
+   ```
 
-## Important Notes
+2. **Trace a transaction**:
+   ```bash
+   node trace-tx.js
+   ```
 
-### Critical: Hex Expiry Format
-⚠️ The `expiry` field in Porto delegation MUST be a hex string (e.g., `"0x68ca3815"`), not an integer!
+3. **Common issues**:
+   - Rate limiting: Wait 10-15 seconds between tests
+   - Network issues: Check RISE testnet status
+   - Porto down: Check https://rise-testnet-porto.fly.dev
 
-```javascript
-// ✅ CORRECT
-const expiry = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
-const expiryHex = '0x' + expiry.toString(16);
+## 📝 Contract Addresses
 
-// ❌ WRONG - Will fail with "invalid type" error
-const expiry = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
-```
+- **FrenPetSimple**: `0x3FDE139A94eEf14C4eBa229FDC80A54f7F5Fbf25`
+- **Porto Implementation**: `0x912a428b1a7e7cb7bb2709a2799a01c020c5acd9`
+- **Porto Orchestrator**: `0x046832405512D508b873E65174E51613291083bc`
 
-### Network Configuration
-- **RPC URL:** https://testnet.riselabs.xyz
-- **Porto Relay:** https://rise-testnet-porto.fly.dev
-- **Chain ID:** 11155931 (RISE Testnet)
-- **FrenPet Contract:** 0xfaf41c4e338d5f712e4aa221c654f764036f168a
-- **Porto Implementation:** 0x6b0f89e0627364a3348277353e3776dc8612853f
+## 🌐 Network Configuration
 
-### Important: Test Account Funding
-⚠️ **Test accounts need a small amount of ETH** to execute transactions through Porto.
-While Porto provides gasless transactions for the main operations, accounts still need
-minimal ETH balance (around 0.001 ETH) for the initial delegation transaction.
-
-### Running All Tests
-
-```bash
-# Run all core tests sequentially
-npm test
-
-# Or run individually
-node test-porto-app-flow.js    # Main app flow
-node test-rpc-state.js         # RPC state reading
-node test-session-keys.js      # Session management
-node test-delegation-simple.js # Delegation format
-```
-
-## Test Development
-
-When adding new tests:
-1. Follow the existing test structure
-2. Always use hex format for expiry fields
-3. Include proper error handling
-4. Add clear console output for debugging
-5. Test both success and failure cases
-
-## Troubleshooting
-
-### Common Issues
-
-1. **"Invalid params" error**
-   - Check that expiry is hex string
-   - Verify all required fields are present
-   - Ensure proper nesting of capabilities
-
-2. **Error 0xfbcb0b34**
-   - Account not delegated to Porto
-   - Run delegation flow first
-   - Check account bytecode
-
-3. **"No quote found" error**
-   - Pass complete context from prepareCalls
-   - Don't modify context object
-
-## Dependencies
-
-See `package.json` for required dependencies:
-- `viem` - Ethereum client library
-- `crypto` - Node.js crypto module
-
-## Contributing
-
-When modifying tests:
-1. Ensure hex expiry format is used everywhere
-2. Update this README if adding new tests
-3. Keep tests focused and clean
-4. Add descriptive console output
+- **Network**: RISE Testnet
+- **Chain ID**: 11155931
+- **RPC**: https://testnet.riselabs.xyz
+- **Porto Relay**: https://rise-testnet-porto.fly.dev
