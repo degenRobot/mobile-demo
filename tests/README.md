@@ -1,6 +1,6 @@
-# Porto Relay Tests
+# Porto Gasless Tests
 
-Simple, organized tests for Porto gasless transactions.
+Tests for Porto gasless transactions on RISE Testnet.
 
 ## 🚀 Quick Start
 
@@ -8,14 +8,23 @@ Simple, organized tests for Porto gasless transactions.
 # Install dependencies
 npm install
 
-# Run main flow test
-node test-porto-flow.js
+# Run main gasless test
+node test-porto-gasless.js
 
-# Check relay wallet balances
-node check-relay-wallets.js
+# Test different capability configurations
+node test-capabilities-exploration.js
+```
 
-# Test with 0 ETH account
-node test-zero-eth.js
+## 🔑 Key Solution
+
+**Porto gasless requires `feeToken` in capabilities:**
+
+```javascript
+capabilities: {
+  meta: {
+    feeToken: "0x0000000000000000000000000000000000000000"  // ETH
+  }
+}
 ```
 
 ## 📁 Project Structure
@@ -23,100 +32,90 @@ node test-zero-eth.js
 ```
 tests/
 ├── lib/
-│   └── porto-utils.js      # Shared utilities and configuration
-├── test-porto-flow.js      # Main Porto flow test
-├── test-zero-eth.js         # Zero ETH gasless test
-├── check-relay-wallets.js   # Check relay wallet balances
-└── README.md                # This file
+│   ├── porto-utils-enhanced.js  # Enhanced utilities with debugging
+│   └── porto-utils.js           # Basic utilities
+├── test-porto-gasless.js        # Main gasless flow test
+├── test-capabilities-exploration.js  # Capability testing
+├── PORTO_GASLESS_SUMMARY.md     # Complete documentation
+├── archive/                      # Previous test iterations
+│   ├── exploration/              # Debugging tests
+│   └── README.md                 # Archive documentation
+└── README.md                     # This file
 ```
 
-## 🧪 Available Tests
+## 🧪 Main Tests
 
-### 1. Main Porto Flow Test
+### 1. Complete Gasless Flow
 ```bash
-node test-porto-flow.js
+node test-porto-gasless.js
 ```
-Tests the complete Porto delegation and transaction flow:
-- Account registration with Porto
-- Gasless transaction sending
-- Transaction status checking
-- Pet creation verification
+Tests the complete gasless flow:
+- Setup delegation (off-chain)
+- Deploy delegation (on-chain - has known issue)
+- Execute gasless transactions
+- Verify 0 ETH spent
 
-### 2. Zero ETH Test
+### 2. Capability Exploration
 ```bash
-node test-zero-eth.js
+node test-capabilities-exploration.js
 ```
-Proves users need 0 ETH for all operations:
-- Creates fresh account with 0 balance
-- Registers with Porto (off-chain)
-- Sends gasless transaction
-- Verifies user spent 0 ETH
+Tests different capability configurations to find what works:
+- Various `meta` configurations
+- With/without `feeToken`
+- Different fee payer settings
+- Success rate analysis
 
-### 3. Check Relay Wallets
-```bash
-node check-relay-wallets.js
-```
-Checks balance of all Porto relay signer wallets:
-- Shows each signer address
-- Displays balance and status
-- Provides funding instructions if needed
+## 🔧 Utilities
 
-## 🔧 Shared Utilities (lib/porto-utils.js)
+### Enhanced Utils (lib/porto-utils-enhanced.js)
+- `makeRelayCall(method, params)` - Porto RPC with debug output
+- `createClient()` - Viem client for Base Sepolia
+- Debug logging of all requests/responses
+- Automatic output directory creation
 
-All tests use shared utilities for consistency:
-
-### Porto Functions
-- `makeRelayCall(method, params)` - Make Porto RPC calls
-- `registerWithPorto(account)` - One-time account registration
-- `sendGaslessTransaction(account, calls)` - Send gasless tx
-- `checkTransactionStatus(bundleId)` - Check tx status
-
-### Blockchain Functions
-- `createClient()` - Create Viem public client
-- `hasPet(address)` - Check if account has pet
-- `getPetStats(address)` - Get pet statistics
-- `getBalance(address)` - Get ETH balance
-
-### Encoding Helpers
-- `encodeFrenPetCall(functionName, args)` - Encode FrenPet calls
+### Basic Utils (lib/porto-utils.js)
+- Original utilities for backward compatibility
+- Simple Porto relay interactions
 
 ## ⚙️ Configuration
 
-All configuration is centralized in `lib/porto-utils.js`:
+Configuration in `lib/porto-utils-enhanced.js`:
 
 ```javascript
 {
   PORTO_URL: 'https://rise-testnet-porto.fly.dev',
-  CHAIN_ID: 11155931,
+  CHAIN_ID: 11155931,  // RISE Testnet
   RPC_URL: 'https://testnet.riselabs.xyz',
   FRENPET_ADDRESS: '0x3FDE139A94eEf14C4eBa229FDC80A54f7F5Fbf25'
 }
 ```
 
-## 🐛 Common Issues & Solutions
+## 🐛 Known Issues
 
-### "Insufficient funds for gas * price + value"
+### Porto Relay Gas Bug
 
-**Problem**: Porto relay wallets don't have enough ETH.
+**Problem**: Transactions with preCalls (delegation deployment) fail with insufficient gas.
 
-**Solution**:
-1. Run `node check-relay-wallets.js`
-2. Fund the wallets shown as insufficient
-3. Each wallet needs at least 0.001 ETH per transaction
+**Root Cause**: Porto relay hardcodes gas values instead of calculating them:
+- `combinedGas`: 50,000,000 (hardcoded)
+- `gas_limit`: 100,000,000 (hardcoded)
 
-### Transaction shows success but state doesn't change
+**Workaround**: Fund account with 0.001 ETH for delegation deployment only.
 
-**Problem**: Transaction only executed delegation, not the actual call.
+**Long-term Fix**: Porto team needs to implement proper gas simulation.
 
-**Solution**: Porto may execute transactions in two phases:
-1. First tx: Sets up delegation
-2. Second tx: Executes actual call
+### Missing Capabilities Error
 
-### Rate limiting errors
+**Problem**: "Invalid params (missing field `meta`)"
 
-**Problem**: Too many requests too quickly.
-
-**Solution**: Wait 10-15 seconds between tests.
+**Solution**: Always include `capabilities.meta` in requests:
+```javascript
+capabilities: {
+  meta: {
+    feeToken: "0x0000000000000000000000000000000000000000"
+  }
+}
+```
 
 ## 📊 Expected Behavior
 

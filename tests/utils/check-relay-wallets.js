@@ -7,7 +7,7 @@
 
 import { mnemonicToAccount } from 'viem/accounts';
 import { formatEther } from 'viem';
-import { getBalance, CONFIG } from './lib/porto-utils.js';
+import { getBalance, CONFIG } from '../lib/porto-utils.js';
 
 // Default test mnemonic (from porto-relay settings)
 const TEST_MNEMONIC = "test test test test test test test test test test test junk";
