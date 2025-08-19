@@ -46,13 +46,15 @@ yarn-error.*
 *.tsbuildinfo
 
 # Build artifacts
-src/
 contracts/broadcast/
 contracts/cache/
 contracts/out/
+contracts/lib
 
 # External dependencies (can be cloned separately)
-external/
+#external/
+external/src/
+
 
 # Test artifacts and debug files
 tests/debug-*.js
@@ -82,3 +84,6 @@ logs/
 # Package manager locks (keep package-lock.json for npm)
 yarn.lock
 pnpm-lock.yaml
+
+
+tests/output/

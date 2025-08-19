@@ -1,57 +1,94 @@
 #!/usr/bin/env node
 
 /**
- * Check the relay's wallet addresses and balances
- * The relay uses the test mnemonic to generate signers
+ * Check Porto Relay Wallet Balances
+ * The relay uses multiple signers from a mnemonic
  */
 
-const { MnemonicBuilder } = require('viem/accounts');
-const { createPublicClient, http } = require('viem');
+import { mnemonicToAccount } from 'viem/accounts';
+import { formatEther } from 'viem';
+import { getBalance, CONFIG } from './lib/porto-utils.js';
 
-const RPC_URL = 'https://testnet.riselabs.xyz';
-
-// Default test mnemonic from settings.rs
+// Default test mnemonic (from porto-relay settings)
 const TEST_MNEMONIC = "test test test test test test test test test test test junk";
 const NUM_SIGNERS = 2; // From relay.toml
 
-const publicClient = createPublicClient({
-  transport: http(RPC_URL),
-});
-
 async function checkRelayWallets() {
-  console.log('=== Porto Relay Wallet Check ===\n');
-  console.log('Mnemonic:', TEST_MNEMONIC);
-  console.log('Number of signers:', NUM_SIGNERS);
+  console.log('🔍 PORTO RELAY WALLET CHECK');
+  console.log('============================\n');
+  
+  console.log('Configuration:');
+  console.log('  Mnemonic:', TEST_MNEMONIC.substring(0, 20) + '...');
+  console.log('  Number of signers:', NUM_SIGNERS);
+  console.log('  Porto URL:', CONFIG.PORTO_URL);
   console.log('');
   
-  // Generate the same addresses the relay uses
+  let totalBalance = 0n;
+  const wallets = [];
+  
+  // Check each signer wallet
   for (let i = 0; i < NUM_SIGNERS; i++) {
-    // Create HD wallet from mnemonic with index
-    const hdKey = require('viem/accounts').mnemonicToAccount(TEST_MNEMONIC, {
-      accountIndex: i
+    const account = mnemonicToAccount(TEST_MNEMONIC, { accountIndex: i });
+    const balance = await getBalance(account.address);
+    
+    wallets.push({
+      index: i,
+      address: account.address,
+      balance
     });
     
-    console.log(`\nSigner ${i}:`);
-    console.log('Address:', hdKey.address);
+    totalBalance += balance;
     
-    // Check balance
-    const balance = await publicClient.getBalance({ address: hdKey.address });
-    console.log('Balance:', balance.toString(), 'wei');
-    console.log('Balance:', (Number(balance) / 1e18).toFixed(6), 'ETH');
+    console.log(`Signer ${i}:`);
+    console.log('  Address:', account.address);
+    console.log('  Balance:', formatEther(balance), 'ETH');
     
-    if (balance < 1000000000000000000n) { // Less than 1 ETH
-      console.log('⚠️  LOW BALANCE - Needs funding!');
+    if (balance < 1000000000000000n) { // Less than 0.001 ETH
+      console.log('  ⚠️  INSUFFICIENT - Needs at least 0.001 ETH per transaction');
+    } else if (balance < 10000000000000000n) { // Less than 0.01 ETH
+      console.log('  ⚠️  LOW - Can only handle a few transactions');
     } else {
-      console.log('✅ Sufficient balance');
+      console.log('  ✅ Sufficient balance');
     }
+    console.log('');
   }
   
-  console.log('\n--- Summary ---');
-  console.log('The Porto relay uses these addresses to pay for gas.');
-  console.log('If they have insufficient balance, the relay cannot process transactions.');
-  console.log('\nTo fund the relay:');
-  console.log('1. Send testnet ETH to the addresses above');
-  console.log('2. Or deploy your own relay with a funded mnemonic');
+  // Summary
+  console.log('═══════════════════════════════════════');
+  console.log('SUMMARY');
+  console.log('═══════════════════════════════════════\n');
+  
+  console.log('Total balance across all signers:', formatEther(totalBalance), 'ETH');
+  
+  // Check which wallet is the main one we know about
+  if (wallets[0].address === CONFIG.PORTO_RELAY_WALLET) {
+    console.log('✅ First signer matches known relay wallet');
+  } else if (wallets.some(w => w.address === CONFIG.PORTO_RELAY_WALLET)) {
+    console.log('⚠️  Known relay wallet is not the first signer');
+  } else {
+    console.log('❌ Known relay wallet not found in signers');
+    console.log('   Expected:', CONFIG.PORTO_RELAY_WALLET);
+  }
+  
+  // Instructions
+  console.log('\n📝 TO FIX INSUFFICIENT FUNDS:');
+  console.log('────────────────────────────');
+  
+  const needsFunding = wallets.filter(w => w.balance < 10000000000000000n);
+  if (needsFunding.length > 0) {
+    console.log('\nFund these addresses with testnet ETH:');
+    needsFunding.forEach(w => {
+      const needed = 10000000000000000n - w.balance;
+      console.log(`  ${w.address} - needs ${formatEther(needed)} ETH`);
+    });
+    
+    console.log('\nTestnet faucets:');
+    console.log('  1. https://faucet.riselabs.xyz/');
+    console.log('  2. Ask in RISE Discord for testnet ETH');
+  } else {
+    console.log('All wallets have sufficient balance!');
+  }
 }
 
+// Run check
 checkRelayWallets().catch(console.error);

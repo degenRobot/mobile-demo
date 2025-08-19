@@ -1,109 +1,165 @@
-# FrenPet Gasless Tests
+# Porto Relay Tests
 
-This directory contains tests for the gasless transaction functionality using Porto relay.
+Simple, organized tests for Porto gasless transactions.
 
 ## 🚀 Quick Start
 
 ```bash
-# Run quick sanity check
-./run-tests.sh quick
+# Install dependencies
+npm install
 
-# Run all core tests
-./run-tests.sh core
+# Run main flow test
+node test-porto-flow.js
 
-# Run mobile-specific tests
-./run-tests.sh mobile
+# Check relay wallet balances
+node check-relay-wallets.js
 
-# Run everything
-./run-tests.sh all
+# Test with 0 ETH account
+node test-zero-eth.js
 ```
 
-## 📋 Test Organization
+## 📁 Project Structure
 
-### Core Gasless Tests
-These tests verify the fundamental gasless functionality:
+```
+tests/
+├── lib/
+│   └── porto-utils.js      # Shared utilities and configuration
+├── test-porto-flow.js      # Main Porto flow test
+├── test-zero-eth.js         # Zero ETH gasless test
+├── check-relay-wallets.js   # Check relay wallet balances
+└── README.md                # This file
+```
 
-- **test-zero-eth-gasless.js** - Proves users need 0 ETH for everything
-- **test-basic-gasless.js** - Basic gasless transaction flow
-- **test-delegation-simple.js** - Account delegation to Porto
-- **test-simple-gasless.js** - Simplified gasless flow test
+## 🧪 Available Tests
 
-### Mobile Flow Tests
-Tests that simulate the mobile app's transaction flow:
-
-- **test-mobile-gasless.js** - Complete mobile app flow simulation
-- **test-session-key-signing.js** - Session key signing functionality
-- **test-session-keys.js** - Comprehensive session key tests
-- **test-porto-app-flow.js** - Porto integration app flow
-
-### Utility Tests
-Supporting tests and debugging tools:
-
-- **test-eoa-signing.js** - Direct EOA signing (fallback mechanism)
-- **check-relay-wallets.js** - Check Porto relay wallet balances
-- **trace-tx.js** - Transaction tracing for debugging
-
-## 🧪 Running Individual Tests
-
-Each test can be run individually:
-
+### 1. Main Porto Flow Test
 ```bash
-# Prove zero ETH requirement
-node test-zero-eth-gasless.js
+node test-porto-flow.js
+```
+Tests the complete Porto delegation and transaction flow:
+- Account registration with Porto
+- Gasless transaction sending
+- Transaction status checking
+- Pet creation verification
 
-# Test mobile flow
-node test-mobile-gasless.js
+### 2. Zero ETH Test
+```bash
+node test-zero-eth.js
+```
+Proves users need 0 ETH for all operations:
+- Creates fresh account with 0 balance
+- Registers with Porto (off-chain)
+- Sends gasless transaction
+- Verifies user spent 0 ETH
 
-# Check relay status
+### 3. Check Relay Wallets
+```bash
 node check-relay-wallets.js
 ```
+Checks balance of all Porto relay signer wallets:
+- Shows each signer address
+- Displays balance and status
+- Provides funding instructions if needed
 
-## ✅ Test Requirements
+## 🔧 Shared Utilities (lib/porto-utils.js)
 
-- Node.js 18+ or 20+
-- Network connection to RISE testnet
-- Porto relay must be accessible
+All tests use shared utilities for consistency:
 
-## 🔑 Key Test Accounts
+### Porto Functions
+- `makeRelayCall(method, params)` - Make Porto RPC calls
+- `registerWithPorto(account)` - One-time account registration
+- `sendGaslessTransaction(account, calls)` - Send gasless tx
+- `checkTransactionStatus(bundleId)` - Check tx status
 
-Tests generate fresh accounts with 0 ETH to prove gasless functionality.
-No test accounts need funding - Porto pays for everything!
+### Blockchain Functions
+- `createClient()` - Create Viem public client
+- `hasPet(address)` - Check if account has pet
+- `getPetStats(address)` - Get pet statistics
+- `getBalance(address)` - Get ETH balance
 
-## 📊 Expected Results
+### Encoding Helpers
+- `encodeFrenPetCall(functionName, args)` - Encode FrenPet calls
 
-All tests should pass with:
-- User balance: 0 ETH throughout
-- Gas paid by: Porto relay wallets
-- Transactions executed successfully
+## ⚙️ Configuration
 
-## 🐛 Debugging
+All configuration is centralized in `lib/porto-utils.js`:
 
-If tests fail:
+```javascript
+{
+  PORTO_URL: 'https://rise-testnet-porto.fly.dev',
+  CHAIN_ID: 11155931,
+  RPC_URL: 'https://testnet.riselabs.xyz',
+  FRENPET_ADDRESS: '0x3FDE139A94eEf14C4eBa229FDC80A54f7F5Fbf25'
+}
+```
 
-1. **Check Porto relay status**:
-   ```bash
-   node check-relay-wallets.js
-   ```
+## 🐛 Common Issues & Solutions
 
-2. **Trace a transaction**:
-   ```bash
-   node trace-tx.js
-   ```
+### "Insufficient funds for gas * price + value"
 
-3. **Common issues**:
-   - Rate limiting: Wait 10-15 seconds between tests
-   - Network issues: Check RISE testnet status
-   - Porto down: Check https://rise-testnet-porto.fly.dev
+**Problem**: Porto relay wallets don't have enough ETH.
 
-## 📝 Contract Addresses
+**Solution**:
+1. Run `node check-relay-wallets.js`
+2. Fund the wallets shown as insufficient
+3. Each wallet needs at least 0.001 ETH per transaction
 
-- **FrenPetSimple**: `0x3FDE139A94eEf14C4eBa229FDC80A54f7F5Fbf25`
-- **Porto Implementation**: `0x912a428b1a7e7cb7bb2709a2799a01c020c5acd9`
-- **Porto Orchestrator**: `0x046832405512D508b873E65174E51613291083bc`
+### Transaction shows success but state doesn't change
 
-## 🌐 Network Configuration
+**Problem**: Transaction only executed delegation, not the actual call.
+
+**Solution**: Porto may execute transactions in two phases:
+1. First tx: Sets up delegation
+2. Second tx: Executes actual call
+
+### Rate limiting errors
+
+**Problem**: Too many requests too quickly.
+
+**Solution**: Wait 10-15 seconds between tests.
+
+## 📊 Expected Behavior
+
+When everything works correctly:
+
+1. **User Balance**: Always 0 ETH (truly gasless)
+2. **Gas Payment**: Porto relay pays all gas
+3. **Transaction Flow**:
+   - Registration: Off-chain (instant, no gas)
+   - First tx: May set up delegation
+   - Subsequent txs: Execute contract calls
+4. **Pet Creation**: Should succeed if relay has funds
+
+## 🔑 Test Accounts
+
+Default test accounts (from lib/porto-utils.js):
+- **MAIN**: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`
+- **SESSION**: `0x70997970C51812dc3A010C7d01b50e0d17dc79C8`
+- **THIRD**: `0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC`
+
+## 📝 Contract Details
+
+### FrenPetSimple (NON-PAYABLE)
+- Address: `0x3FDE139A94eEf14C4eBa229FDC80A54f7F5Fbf25`
+- Functions: `createPet()`, `feedPet()`, `playWithPet()`
+- All functions are non-payable (require 0 ETH)
+
+### Porto Contracts
+- Orchestrator: `0x046832405512D508b873E65174E51613291083bc`
+- Implementation: `0x912a428b1a7e7cb7bb2709a2799a01c020c5acd9`
+- Relay Wallet: `0x584B5274765a7F7C78FDc960248f38e5Ad6b1EDb`
+
+## 🌐 Network
 
 - **Network**: RISE Testnet
 - **Chain ID**: 11155931
 - **RPC**: https://testnet.riselabs.xyz
 - **Porto Relay**: https://rise-testnet-porto.fly.dev
+
+## 💡 Key Insights
+
+1. **Porto uses rotating signers**: Multiple wallets from a mnemonic
+2. **Each signer needs funds**: Not just the main relay wallet
+3. **Transactions are meta-transactions**: Go through orchestrator
+4. **Delegation is off-chain**: Stored in Porto's database
+5. **First tx may only delegate**: Subsequent txs execute calls
