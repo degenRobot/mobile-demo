@@ -19,7 +19,7 @@ export const CONFIG = {
   
   // Porto contracts
   PORTO_ORCHESTRATOR: '0x046832405512d508b873e65174e51613291083bc',
-  PORTO_IMPLEMENTATION: '0x912a428b1a7e7cb7bb2709a2799a01c020c5acd9',
+  PORTO_IMPLEMENTATION: '0x912a428b1a7e7cb7bb2709a2799a01c020c5acd9', // delegation_implementation from relay.toml
   PORTO_RELAY_WALLET: '0x584B5274765a7F7C78FDc960248f38e5Ad6b1EDb',
   
   // FrenPetSimple contract (NON-PAYABLE)
