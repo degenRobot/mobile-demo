@@ -43,19 +43,23 @@ async function testGasless() {
   const expiry = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60); // 30 days
   const expiryHex = '0x' + expiry.toString(16);
   
-  // Prepare the upgrade
+  // Prepare the upgrade - authorize session key (not the EOA itself)
+  // The EOA doesn't need authorization - it IS the owner
   const prepareParams = {
     address: mainAccount.address,
     delegation: CONFIG.PORTO_IMPLEMENTATION,
     capabilities: {
-      authorizeKeys: [{
-        expiry: expiryHex,
-        prehash: false,
-        publicKey: sessionAccount.address,
-        role: 'admin',
-        type: 'secp256k1',
-        permissions: []
-      }]
+      authorizeKeys: [
+        {
+          // Session key for operations
+          expiry: expiryHex,
+          prehash: false,
+          publicKey: sessionAccount.address,  // Session key's address
+          role: 'session',  // Session role, not admin
+          type: 'secp256k1',
+          permissions: []  // Can add specific permissions later
+        }
+      ]
     },
     chainId: CONFIG.CHAIN_ID
   };
@@ -65,22 +69,13 @@ async function testGasless() {
   
   // Sign the authorization and execution digests with MAIN EOA (not session key)
   // These signatures authorize the delegation, so must come from the EOA owner
-  const authSig = await mainAccount.signMessage({
-    message: { raw: prepareResponse.digests.auth }
+  // Use .sign() for raw signatures without EIP-191 prefixing (following Porto SDK pattern)
+  const authSig = await mainAccount.sign({
+    hash: prepareResponse.digests.auth
   });
   
-  const domain = {
-    ...prepareResponse.typedData.domain,
-    chainId: typeof prepareResponse.typedData.domain.chainId === 'string' 
-      ? parseInt(prepareResponse.typedData.domain.chainId, 16)
-      : prepareResponse.typedData.domain.chainId,
-  };
-  
-  const execSig = await mainAccount.signTypedData({
-    domain,
-    types: prepareResponse.typedData.types,
-    primaryType: prepareResponse.typedData.primaryType,
-    message: prepareResponse.typedData.message,
+  const execSig = await mainAccount.sign({
+    hash: prepareResponse.digests.exec
   });
   
   // Complete the upgrade
@@ -90,6 +85,31 @@ async function testGasless() {
   }]);
   
   console.log('  ✅ Delegation registered');
+  
+  // Check if keys were properly registered
+  console.log('\n  Checking registered keys (off-chain)...');
+  try {
+    const keysResponse = await makeRelayCall('wallet_getKeys', [{
+      address: mainAccount.address,
+      chain_id: CONFIG.CHAIN_ID  // Use chain_id (underscore) not chainId
+    }]);
+    console.log('  Keys found:', keysResponse.length);
+    if (keysResponse.length > 0) {
+      keysResponse.forEach((key, index) => {
+        const publicKey = key.base?.base?.publicKey || key.publicKey || key.key?.publicKey;
+        const role = key.base?.base?.role || key.role || key.key?.role;
+        const type = key.base?.base?.type || key.type || key.key?.type;
+        console.log(`    Key ${index + 1}:`, {
+          publicKey: publicKey,
+          role: role,
+          type: type,
+          isSessionKey: publicKey?.toLowerCase() === sessionAccount.address.toLowerCase() ? '✅' : '❌'
+        });
+      });
+    }
+  } catch (error) {
+    console.log('  Error getting keys:', error.message);
+  }
   
   // =====================================
   // STEP 2: Execute Gasless Transaction
@@ -106,19 +126,28 @@ async function testGasless() {
     args: [petName]
   });
   
-  // Prepare the calls
+  console.log('  Calldata:', createPetCalldata.substring(0, 20) + '...');
+  console.log('  Has 0x prefix:', createPetCalldata.startsWith('0x'));
+  
+  // IMPORTANT: The first transaction after wallet_upgradeAccount should automatically
+  // include the delegation deployment + key authorization as preCalls.
+  // The relay stores this data and retrieves it on the first prepareCalls.
+  
+  // Prepare the calls - relay should auto-include upgrade data as preCall
   const callParams = {
     from: mainAccount.address,
     chainId: CONFIG.CHAIN_ID,
     calls: [{
       to: FRENPET_SIMPLE_ADDRESS,
-      value: '0x0',
-      data: createPetCalldata
+      data: createPetCalldata,
+      value: '0x0'  // Add explicit zero value
     }],
     capabilities: {
       meta: {
         feeToken: ETH_ADDRESS  // Critical: ETH as fee token for sponsorship
-      }
+      },
+      // Add preCalls: true to ensure relay includes stored upgrade data
+      preCalls: true
     }
   };
   
@@ -131,14 +160,35 @@ async function testGasless() {
   const preCallCount = prepareCallsResponse.context?.quote?.intent?.encodedPreCalls?.length || 0;
   console.log('  PreCalls included:', preCallCount);
   
-  // Sign the intent digest
-  // For the first transaction (which deploys delegation), we use the main EOA
-  // After delegation is deployed, we can use the session key
-  const isFirstTransaction = preCallCount > 0; // PreCalls indicate delegation deployment
-  const signingAccount = isFirstTransaction ? mainAccount : sessionAccount;
+  // Debug: Check what's in the preCalls
+  if (preCallCount > 0) {
+    console.log('  PreCall data detected - should include:');
+    console.log('    1. Delegation deployment (EIP-7702)');
+    console.log('    2. Key authorization for session key');
+    const preCallsData = prepareCallsResponse.context?.quote?.intent?.encodedPreCalls;
+    if (preCallsData && preCallsData[0]) {
+      console.log('    PreCall[0] length:', preCallsData[0].length, 'chars');
+    }
+  } else {
+    console.log('  ⚠️  No preCalls detected!');
+    console.log('  This might mean:');
+    console.log('    - Relay didn\'t find stored upgrade data');
+    console.log('    - Or delegation is already deployed');
+  }
   
-  const callSignature = await signingAccount.signMessage({
-    message: { raw: prepareCallsResponse.digest }
+  // Sign the intent digest
+  // IMPORTANT: The first transaction includes delegation deployment + key authorization.
+  // This must be signed by the EOA (mainAccount) to authorize the delegation.
+  // The session key can't sign this because it's not authorized yet.
+  const isFirstTransaction = preCallCount > 0;
+  const signingAccount = isFirstTransaction ? mainAccount : sessionAccount;
+  const signingKey = isFirstTransaction ? mainAccount.address : sessionAccount.address;
+  
+  console.log('  Signing with:', isFirstTransaction ? 'Main EOA (for delegation)' : 'Session Key');
+  console.log('  Note: Delegation + key auth will be deployed atomically');
+  
+  const callSignature = await signingAccount.sign({
+    hash: prepareCallsResponse.digest
   });
   
   // Send the transaction
@@ -147,7 +197,7 @@ async function testGasless() {
       context: prepareCallsResponse.context,
       key: {
         prehash: false,
-        publicKey: signingAccount.address,
+        publicKey: signingKey,
         type: 'secp256k1'
       },
       signature: callSignature
@@ -185,9 +235,40 @@ async function testGasless() {
   const hasDelegation = code && code !== '0x';
   console.log('  Delegation deployed:', hasDelegation ? '✅ Yes' : '❌ No');
   
+  // If delegation deployed, check keys again
+  if (hasDelegation) {
+    console.log('\n  Checking keys after delegation deployment (on-chain)...');
+    try {
+      const keysAfter = await makeRelayCall('wallet_getKeys', [{
+        address: mainAccount.address,
+        chain_id: CONFIG.CHAIN_ID  // Use chain_id (underscore) not chainId
+      }]);
+      console.log('  Keys after deployment:', keysAfter.length);
+      if (keysAfter.length > 0) {
+        keysAfter.forEach((key, index) => {
+          const publicKey = key.base?.base?.publicKey || key.publicKey || key.key?.publicKey;
+          const role = key.base?.base?.role || key.role || key.key?.role;
+          const type = key.base?.base?.type || key.type || key.key?.type;
+          console.log(`    Key ${index + 1}:`, {
+            publicKey: publicKey,
+            role: role,
+            type: type,
+            hash: key.hash,
+            isSessionKey: publicKey?.toLowerCase() === sessionAccount.address.toLowerCase() ? '✅' : '❌'
+          });
+        });
+      } else {
+        console.log('  ⚠️  No keys found on-chain - session key may not have persisted');
+      }
+    } catch (error) {
+      console.log('  Error getting keys:', error.message);
+    }
+  }
+  
   // Check if pet was created
+  let hasPet = false;
   try {
-    const hasPet = await client.readContract({
+    hasPet = await client.readContract({
       address: FRENPET_SIMPLE_ADDRESS,
       abi: FrenPetSimpleJson.abi,
       functionName: 'hasPet',
@@ -216,26 +297,27 @@ async function testGasless() {
   }
   
   // =====================================
-  // STEP 4: Second Transaction (if first succeeded)
+  // STEP 4: Second Transaction - Create Pet Again
   // =====================================
-  if (hasDelegation) {
-    console.log('\n📝 Step 4: Second Transaction - Feed Pet');
+  if (hasDelegation && !hasPet) {
+    console.log('\n📝 Step 4: Second Transaction - Retry Pet Creation');
     console.log('-'.repeat(40));
-    console.log('  Testing subsequent gasless transaction...');
+    console.log('  Delegation is deployed, retrying pet creation...');
     
-    const feedCalldata = encodeFunctionData({
+    const retryPetName = `GaslessPet_Retry_${Date.now()}`;
+    const retryCalldata = encodeFunctionData({
       abi: FrenPetSimpleJson.abi,
-      functionName: 'feedPet',
-      args: []
+      functionName: 'createPet',
+      args: [retryPetName]
     });
     
-    const feedParams = {
+    const retryParams = {
       from: mainAccount.address,
       chainId: CONFIG.CHAIN_ID,
       calls: [{
         to: FRENPET_SIMPLE_ADDRESS,
-        value: '0x0',
-        data: feedCalldata
+        data: retryCalldata,
+        value: '0x0'  // Add explicit zero value
       }],
       capabilities: {
         meta: {
@@ -245,29 +327,85 @@ async function testGasless() {
     };
     
     try {
-      const feedPrepare = await makeRelayCall('wallet_prepareCalls', [feedParams]);
-      console.log('  PreCalls in feed tx:', 
-        feedPrepare.context?.quote?.intent?.encodedPreCalls?.length || 0,
+      const retryPrepare = await makeRelayCall('wallet_prepareCalls', [retryParams]);
+      console.log('  PreCalls in retry tx:', 
+        retryPrepare.context?.quote?.intent?.encodedPreCalls?.length || 0,
         '(should be 0)');
       
-      const feedSignature = await sessionAccount.signMessage({
-        message: { raw: feedPrepare.digest }
+      // Use session key for retry since delegation is deployed
+      const retrySignature = await sessionAccount.sign({
+        hash: retryPrepare.digest
       });
       
-      const feedResponse = await makeRelayCall('wallet_sendPreparedCalls', [{
-        context: feedPrepare.context,
+      const retryResponse = await makeRelayCall('wallet_sendPreparedCalls', [{
+        context: retryPrepare.context,
         key: {
           prehash: false,
-          publicKey: sessionAccount.address,
+          publicKey: sessionAccount.address,  // Use session key
           type: 'secp256k1'
         },
-        signature: feedSignature
+        signature: retrySignature
       }]);
       
-      console.log('  ✅ Feed transaction sent:', feedResponse.id);
+      console.log('  ✅ Retry transaction sent:', retryResponse.id);
+      console.log('     View: https://testnet.riselabs.xyz/tx/' + retryResponse.id);
+      
+      // Wait and check transaction status
+      console.log('\n⏳ Waiting 10 seconds for confirmation...');
+      await new Promise(r => setTimeout(r, 10000));
+      
+      // Check transaction status
+      try {
+        const statusResponse = await makeRelayCall('wallet_getCallsStatus', [retryResponse.id]);
+        console.log('  Transaction status:', statusResponse.status);
+        if (statusResponse.receipts && statusResponse.receipts.length > 0) {
+          const receipt = statusResponse.receipts[0];
+          console.log('  Receipt status:', receipt.status === '0x1' ? '✅ Success' : '❌ Failed');
+          console.log('  From:', receipt.from);
+          console.log('  To:', receipt.to);
+          console.log('  Gas used:', receipt.gasUsed);
+          
+          // Check if there are logs (events)
+          if (receipt.logs && receipt.logs.length > 0) {
+            console.log('  Logs emitted:', receipt.logs.length);
+            receipt.logs.forEach((log, i) => {
+              console.log(`    Log ${i}: Contract ${log.address}, Topics: ${log.topics.length}`);
+            });
+          } else {
+            console.log('  No logs emitted (pet creation might have failed)');
+          }
+        }
+      } catch (error) {
+        console.log('  Could not get transaction status:', error.message);
+      }
+      
+      const retryHasPet = await client.readContract({
+        address: FRENPET_SIMPLE_ADDRESS,
+        abi: FrenPetSimpleJson.abi,
+        functionName: 'hasPet',
+        args: [mainAccount.address]
+      });
+      
+      console.log('  Pet created after retry:', retryHasPet ? '✅ Yes' : '❌ No');
+      
+      if (retryHasPet) {
+        const petStats = await client.readContract({
+          address: FRENPET_SIMPLE_ADDRESS,
+          abi: FrenPetSimpleJson.abi,
+          functionName: 'getPetStats',
+          args: [mainAccount.address]
+        });
+        
+        console.log('\n🐾 Pet Stats:');
+        console.log('  Name:', petStats[0]);
+        console.log('  Level:', petStats[1].toString());
+        console.log('  Experience:', petStats[2].toString());
+        console.log('  Happiness:', petStats[3].toString());
+        console.log('  Hunger:', petStats[4].toString());
+      }
       
     } catch (error) {
-      console.log('  ❌ Feed transaction failed:', error.message);
+      console.log('  ❌ Retry transaction failed:', error.message);
     }
   }
   
