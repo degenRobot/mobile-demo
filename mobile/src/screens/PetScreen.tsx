@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   TextInput,
   ActivityIndicator,
   Alert,
@@ -13,10 +12,22 @@ import {
 import * as Haptics from 'expo-haptics';
 import { useWallet } from '../hooks/useWallet';
 import { useFrenPet, PetData } from '../hooks/useFrenPet';
+import {
+  PixelButton,
+  PixelCard,
+  PixelStatsCard,
+  HappinessBar,
+  HungerBar,
+  ExperienceBar,
+  pixelTheme,
+} from '../components/ui';
+import { PixelIconButton, PixelActionBar } from '../components/ui/PixelIconButton';
+import { useToast } from '../components/ui/PixelToast';
 
 export function PetScreen() {
   const { address, wallet, porto } = useWallet();
   const frenPet = useFrenPet({ wallet, porto, useGasless: true });
+  const { showToast } = useToast();
   
   const [petName, setPetName] = useState('');
   const [myPet, setMyPet] = useState<PetData | null>(null);
@@ -51,18 +62,18 @@ export function PetScreen() {
 
   const handleCreatePet = async () => {
     if (!petName.trim()) {
-      Alert.alert('Error', 'Please enter a name for your pet');
+      showToast('ENTER A NAME!', 'error');
       return;
     }
 
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await frenPet.createPet(petName);
-      Alert.alert('Success', 'Your pet has been created!');
+      showToast('PET CREATED!', 'success');
       setPetName('');
       await loadPetData();
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to create pet');
+      showToast(error.message || 'FAILED TO CREATE', 'error');
     }
   };
 
@@ -70,10 +81,10 @@ export function PetScreen() {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await frenPet.feedPet();
-      Alert.alert('Success', 'Your pet has been fed!');
+      showToast('PET FED!', 'success');
       await loadPetData();
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to feed pet');
+      showToast(error.message || 'FAILED TO FEED', 'error');
     }
   };
 
@@ -81,11 +92,28 @@ export function PetScreen() {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await frenPet.playWithPet();
-      Alert.alert('Success', 'Your pet is happy!');
+      showToast('PET IS HAPPY!', 'success');
       await loadPetData();
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to play with pet');
+      showToast(error.message || 'FAILED TO PLAY', 'error');
     }
+  };
+
+  const handleTrainPet = async () => {
+    showToast('TRAINING...', 'info');
+    // TODO: Implement training
+    setTimeout(() => showToast('+10 XP!', 'success'), 1000);
+  };
+
+  const handleHealPet = async () => {
+    showToast('HEALING...', 'info');
+    // TODO: Implement healing
+    setTimeout(() => showToast('FULLY HEALED!', 'success'), 1000);
+  };
+
+  const handleBattlePet = async () => {
+    showToast('FINDING OPPONENT...', 'info');
+    // TODO: Navigate to battle screen
   };
 
   // Battle functionality removed in simplified version
@@ -101,8 +129,8 @@ export function PetScreen() {
   if (frenPet.isLoading) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#6B46C1" />
-        <Text style={styles.loadingText}>Processing...</Text>
+        <ActivityIndicator size="large" color={pixelTheme.colors.primary} />
+        <Text style={styles.loadingText}>PROCESSING...</Text>
       </View>
     );
   }
@@ -111,26 +139,33 @@ export function PetScreen() {
   if (!myPet || !myPet.isAlive) {
     return (
       <ScrollView style={styles.container}>
-        <View style={styles.createCard}>
-          <Text style={styles.createTitle}>
-            {myPet && !myPet.isAlive ? 'Your pet has passed away 😢' : 'Create Your FrenPet'}
-          </Text>
+        <PixelCard
+          title={myPet && !myPet.isAlive ? 'GAME OVER' : 'NEW GAME'}
+          variant="elevated"
+          style={styles.createCardContainer}
+        >
           {myPet && !myPet.isAlive && (
             <Text style={styles.deadPetText}>
-              {myPet.name} lived a good life. Create a new pet to continue playing.
+              {myPet.name} HAS FAINTED.
+              START A NEW ADVENTURE!
             </Text>
           )}
           <TextInput
-            style={styles.input}
-            placeholder="Enter pet name"
+            style={styles.pixelInput}
+            placeholder="ENTER PET NAME"
+            placeholderTextColor={pixelTheme.colors.textLight}
             value={petName}
             onChangeText={setPetName}
             maxLength={20}
           />
-          <TouchableOpacity style={styles.createButton} onPress={handleCreatePet}>
-            <Text style={styles.createButtonText}>Create Pet 🐾</Text>
-          </TouchableOpacity>
-        </View>
+          <PixelButton
+            title="CREATE PET"
+            onPress={handleCreatePet}
+            variant="primary"
+            size="large"
+            fullWidth
+          />
+        </PixelCard>
       </ScrollView>
     );
   }
@@ -139,75 +174,88 @@ export function PetScreen() {
     <ScrollView 
       style={styles.container}
       refreshControl={
-        <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+        <RefreshControl 
+          refreshing={isRefreshing} 
+          onRefresh={onRefresh}
+          tintColor={pixelTheme.colors.primary}
+        />
       }
     >
       {/* Pet Display */}
-      <View style={styles.petCard}>
-        <Text style={styles.petEmoji}>{getPetEmoji()}</Text>
-        <Text style={styles.petName}>{myPet.name}</Text>
-        <View style={styles.levelBadge}>
-          <Text style={styles.levelText}>Level {myPet.level}</Text>
+      <PixelCard variant="elevated" style={styles.petCardContainer}>
+        <View style={styles.petDisplay}>
+          <Text style={styles.petEmoji}>{getPetEmoji()}</Text>
+          <Text style={styles.petName}>{myPet.name.toUpperCase()}</Text>
+          <View style={styles.levelBadge}>
+            <Text style={styles.levelText}>LV.{myPet.level}</Text>
+          </View>
         </View>
-      </View>
+      </PixelCard>
 
       {/* Stats */}
-      <View style={styles.statsCard}>
-        <View style={styles.stat}>
-          <Text style={styles.statLabel}>Happiness</Text>
-          <View style={styles.progressBar}>
-            <View 
-              style={[styles.progressFill, styles.happinessFill, { width: `${myPet.happiness}%` }]} 
-            />
-          </View>
-          <Text style={styles.statValue}>{myPet.happiness}/100</Text>
-        </View>
-
-        <View style={styles.stat}>
-          <Text style={styles.statLabel}>Hunger</Text>
-          <View style={styles.progressBar}>
-            <View 
-              style={[styles.progressFill, styles.hungerFill, { width: `${myPet.hunger}%` }]} 
-            />
-          </View>
-          <Text style={styles.statValue}>{myPet.hunger}/100</Text>
-        </View>
-
-        <View style={styles.stat}>
-          <Text style={styles.statLabel}>Experience</Text>
-          <View style={styles.progressBar}>
-            <View 
-              style={[
-                styles.progressFill, 
-                styles.expFill, 
-                { width: `${(myPet.experience / (myPet.level * 100)) * 100}%` }
-              ]} 
-            />
-          </View>
-          <Text style={styles.statValue}>{myPet.experience}/{myPet.level * 100}</Text>
-        </View>
-
-        {/* Win streak removed in simplified version */}
-      </View>
+      <PixelCard title="STATS" variant="inset" style={styles.statsCardContainer}>
+        <HappinessBar
+          value={myPet.happiness}
+          max={100}
+          showValue
+        />
+        <HungerBar
+          value={myPet.hunger}
+          max={100}
+          showValue
+        />
+        <ExperienceBar
+          value={myPet.experience}
+          max={myPet.level * 100}
+          showValue
+        />
+      </PixelCard>
 
       {/* Action Buttons */}
-      <View style={styles.actionsCard}>
-        <Text style={styles.sectionTitle}>Actions</Text>
-        <View style={styles.actionButtons}>
-          <TouchableOpacity style={styles.actionButton} onPress={handleFeedPet}>
-            <Text style={styles.actionEmoji}>🍎</Text>
-            <Text style={styles.actionText}>Feed</Text>
-            <Text style={styles.actionCost}>Free! 🎉</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton} onPress={handlePlayWithPet}>
-            <Text style={styles.actionEmoji}>🎮</Text>
-            <Text style={styles.actionText}>Play</Text>
-            <Text style={styles.actionCost}>Free! 🎉</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <PixelCard title="ACTIONS" variant="default" style={styles.actionsCardContainer}>
+        <PixelActionBar>
+          <PixelIconButton
+            emoji="🍎"
+            label="FEED"
+            onPress={handleFeedPet}
+            variant="success"
+            size="large"
+          />
+          <PixelIconButton
+            emoji="🎮"
+            label="PLAY"
+            onPress={handlePlayWithPet}
+            variant="primary"
+            size="large"
+          />
+          <PixelIconButton
+            emoji="💪"
+            label="TRAIN"
+            onPress={handleTrainPet}
+            variant="default"
+            size="large"
+          />
+          <PixelIconButton
+            emoji="💊"
+            label="HEAL"
+            onPress={handleHealPet}
+            variant="success"
+            size="large"
+          />
+          <PixelIconButton
+            emoji="⚔️"
+            label="BATTLE"
+            onPress={handleBattlePet}
+            variant="danger"
+            size="large"
+          />
+        </PixelActionBar>
+      </PixelCard>
 
-      {/* Battle functionality removed in simplified version */}
+      {/* Gasless indicator */}
+      <View style={styles.gaslessIndicator}>
+        <Text style={styles.gaslessText}>⚡ GASLESS MODE ACTIVE</Text>
+      </View>
     </ScrollView>
   );
 }
@@ -215,192 +263,109 @@ export function PetScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: pixelTheme.colors.background,
   },
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F3F4F6',
+    backgroundColor: pixelTheme.colors.background,
   },
   loadingText: {
-    marginTop: 10,
-    color: '#6B7280',
+    marginTop: pixelTheme.spacing.md,
+    color: pixelTheme.colors.textLight,
+    fontFamily: pixelTheme.typography.fontFamily.pixel,
+    fontSize: pixelTheme.typography.fontSize.medium,
+    letterSpacing: pixelTheme.typography.letterSpacing.wide,
   },
-  createCard: {
-    backgroundColor: 'white',
-    margin: 20,
-    padding: 30,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  createTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    color: '#1F2937',
+  createCardContainer: {
+    margin: pixelTheme.spacing.lg,
   },
   deadPetText: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 20,
+    fontSize: pixelTheme.typography.fontSize.medium,
+    fontFamily: pixelTheme.typography.fontFamily.pixel,
+    color: pixelTheme.colors.danger,
     textAlign: 'center',
+    marginBottom: pixelTheme.spacing.lg,
+    letterSpacing: pixelTheme.typography.letterSpacing.normal,
   },
-  input: {
-    width: '100%',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    marginBottom: 20,
+  pixelInput: {
+    borderWidth: pixelTheme.borders.width.thick,
+    borderColor: pixelTheme.colors.border,
+    backgroundColor: pixelTheme.colors.surface,
+    paddingHorizontal: pixelTheme.spacing.md,
+    paddingVertical: pixelTheme.spacing.sm,
+    marginBottom: pixelTheme.spacing.md,
+    fontSize: pixelTheme.typography.fontSize.medium,
+    fontFamily: pixelTheme.typography.fontFamily.pixel,
+    color: pixelTheme.colors.text,
+    letterSpacing: pixelTheme.typography.letterSpacing.wide,
   },
-  createButton: {
-    backgroundColor: '#6B46C1',
-    paddingHorizontal: 30,
-    paddingVertical: 15,
-    borderRadius: 8,
+  // Pet display styles
+  petCardContainer: {
+    margin: pixelTheme.spacing.lg,
   },
-  createButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  petCard: {
-    backgroundColor: 'white',
-    margin: 20,
-    padding: 30,
-    borderRadius: 12,
+  petDisplay: {
     alignItems: 'center',
   },
   petEmoji: {
     fontSize: 80,
-    marginBottom: 10,
+    marginBottom: pixelTheme.spacing.sm,
   },
   petName: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 10,
+    fontSize: pixelTheme.typography.fontSize.huge,
+    fontFamily: pixelTheme.typography.fontFamily.pixelBold,
+    color: pixelTheme.colors.text,
+    marginBottom: pixelTheme.spacing.sm,
+    letterSpacing: pixelTheme.typography.letterSpacing.wide,
   },
   levelBadge: {
-    backgroundColor: '#6B46C1',
-    paddingHorizontal: 15,
-    paddingVertical: 5,
-    borderRadius: 20,
+    backgroundColor: pixelTheme.colors.primary,
+    paddingHorizontal: pixelTheme.spacing.md,
+    paddingVertical: pixelTheme.spacing.xs,
+    borderWidth: pixelTheme.borders.width.medium,
+    borderColor: pixelTheme.colors.border,
   },
   levelText: {
-    color: 'white',
-    fontWeight: 'bold',
+    color: pixelTheme.colors.surface,
+    fontFamily: pixelTheme.typography.fontFamily.pixelBold,
+    fontSize: pixelTheme.typography.fontSize.medium,
+    letterSpacing: pixelTheme.typography.letterSpacing.wide,
   },
-  statsCard: {
-    backgroundColor: 'white',
-    marginHorizontal: 20,
-    marginBottom: 20,
-    padding: 20,
-    borderRadius: 12,
+  // Stats styles
+  statsCardContainer: {
+    marginHorizontal: pixelTheme.spacing.lg,
+    marginBottom: pixelTheme.spacing.lg,
   },
-  stat: {
-    marginBottom: 20,
-  },
-  statLabel: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 5,
-  },
-  progressBar: {
-    height: 20,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 10,
-  },
-  happinessFill: {
-    backgroundColor: '#10B981',
-  },
-  hungerFill: {
-    backgroundColor: '#EF4444',
-  },
-  expFill: {
-    backgroundColor: '#3B82F6',
-  },
-  statValue: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 5,
-    textAlign: 'right',
-  },
-  winStreakContainer: {
-    alignItems: 'center',
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  winStreakText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#6B46C1',
-  },
-  actionsCard: {
-    backgroundColor: 'white',
-    marginHorizontal: 20,
-    marginBottom: 20,
-    padding: 20,
-    borderRadius: 12,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 15,
-    color: '#1F2937',
+  // Actions styles
+  actionsCardContainer: {
+    marginHorizontal: pixelTheme.spacing.lg,
+    marginBottom: pixelTheme.spacing.lg,
   },
   actionButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    gap: pixelTheme.spacing.md,
   },
-  actionButton: {
-    backgroundColor: '#F3F4F6',
-    padding: 20,
-    borderRadius: 12,
+  actionButtonContainer: {
+    flex: 1,
+  },
+  actionDescription: {
+    fontSize: pixelTheme.typography.fontSize.tiny,
+    fontFamily: pixelTheme.typography.fontFamily.pixel,
+    color: pixelTheme.colors.textLight,
+    textAlign: 'center',
+    marginTop: pixelTheme.spacing.xs,
+    letterSpacing: pixelTheme.typography.letterSpacing.normal,
+  },
+  // Gasless indicator
+  gaslessIndicator: {
     alignItems: 'center',
-    flex: 0.45,
+    paddingVertical: pixelTheme.spacing.md,
+    marginBottom: pixelTheme.spacing.xl,
   },
-  actionEmoji: {
-    fontSize: 30,
-    marginBottom: 5,
-  },
-  actionText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 5,
-  },
-  actionCost: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  battleCard: {
-    backgroundColor: 'white',
-    marginHorizontal: 20,
-    marginBottom: 40,
-    padding: 20,
-    borderRadius: 12,
-  },
-  battleButton: {
-    backgroundColor: '#DC2626',
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  disabledButton: {
-    backgroundColor: '#9CA3AF',
-  },
-  battleButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+  gaslessText: {
+    fontSize: pixelTheme.typography.fontSize.small,
+    fontFamily: pixelTheme.typography.fontFamily.pixel,
+    color: pixelTheme.colors.success,
+    letterSpacing: pixelTheme.typography.letterSpacing.wide,
   },
 });
