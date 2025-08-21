@@ -9,6 +9,14 @@ export const PORTO_CONFIG = {
   // Chain configuration
   chainId: 11155931, // Sepolia fork used by RISE testnet
   
+  // Porto contracts (from working test configuration)
+  contracts: {
+    orchestrator: '0x046832405512d508b873e65174e51613291083bc',
+    implementation: '0x912a428b1a7e7cb7bb2709a2799a01c020c5acd9',
+    proxy: '0xf463d5cbc64916caa2775a8e9b264f8c35f4b8a4',
+    relayWallet: '0x584B5274765a7F7C78FDc960248f38e5Ad6b1EDb',
+  },
+  
   // Retry configuration
   retryAttempts: 3,
   retryDelay: 1000, // ms

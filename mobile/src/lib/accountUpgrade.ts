@@ -6,14 +6,10 @@
  */
 
 import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts';
-import { createPublicClient, http } from 'viem';
+import { createPublicClient, http, type Hex } from 'viem';
 import { riseTestnet } from '../config/chain';
-
-// Porto account implementation contract (MUST match relay.toml!)
-const PORTO_ACCOUNT_IMPL = '0x912a428b1a7e7cb7bb2709a2799a01c020c5acd9'; // delegation_implementation from relay.toml
-const PORTO_ORCHESTRATOR = '0x046832405512d508b873e65174e51613291083bc'; // orchestrator from relay.toml
-const PORTO_URL = 'https://rise-testnet-porto.fly.dev';
-const PORTO_CHAIN_ID = 11155931; // RISE Testnet
+import { PORTO_CONFIG } from '../config/porto';
+import { serializePublicKey } from './porto-utils';
 
 interface UpgradeRequest {
   from: string;
@@ -54,57 +50,39 @@ export async function isAccountDelegated(address: string): Promise<boolean> {
  */
 export async function prepareUpgradeAccount(
   account: PrivateKeyAccount,
-  sessionKeyAddress?: string
+  adminKeyAddress?: string
 ): Promise<UpgradeResponse> {
-  // Calculate expiry and convert to hex string (CRITICAL!)
-  const expiry = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60); // 30 days
-  const expiryHex = '0x' + expiry.toString(16); // MUST be hex string!
+  // For MVP, use empty keys array or optionally add admin key
+  const authorizeKeys: any[] = [];
   
-  // Prepare authorize keys array with admin account
-  const authorizeKeys = [
-    {
-      expiry: expiryHex,  // Even admin needs expiry in hex format
+  // Optionally add admin key if provided
+  if (adminKeyAddress) {
+    authorizeKeys.push({
+      expiry: '0x0',  // Never expires
       prehash: false,
-      publicKey: account.address,  // Main wallet as admin
+      publicKey: serializePublicKey(adminKeyAddress),  // Padded to 32 bytes
       role: 'admin' as const,
       type: 'secp256k1' as const,
       permissions: []  // Empty for admin role
-    }
-  ];
-  
-  // Add session key if provided
-  if (sessionKeyAddress) {
-    const sessionExpiry = Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60); // 7 days
-    const sessionExpiryHex = '0x' + sessionExpiry.toString(16);
-    
-    authorizeKeys.push({
-      expiry: sessionExpiryHex,  // MUST be hex string!
-      prehash: false,
-      publicKey: sessionKeyAddress,  // Session key
-      role: 'normal' as const,  // Use 'normal' not 'session'
-      type: 'secp256k1' as const,
-      permissions: []
     });
-    console.log('[AccountUpgrade] Authorizing session key:', sessionKeyAddress);
-    console.log('[AccountUpgrade] Session key expiry (hex):', sessionExpiryHex);
+    console.log('[AccountUpgrade] Authorizing admin key:', adminKeyAddress);
   }
 
   // Build request with correct structure
   const request = {
     address: account.address,
-    delegation: PORTO_ACCOUNT_IMPL,
+    delegation: PORTO_CONFIG.contracts.proxy,  // Use proxy from config
     capabilities: {
       authorizeKeys  // Keys go inside capabilities
     },
-    chainId: PORTO_CHAIN_ID
+    chainId: PORTO_CONFIG.chainId
   };
 
   console.log('[AccountUpgrade] Preparing upgrade for:', account.address);
-  console.log('[AccountUpgrade] Delegate to:', PORTO_ACCOUNT_IMPL);
+  console.log('[AccountUpgrade] Delegate to:', PORTO_CONFIG.contracts.proxy);
   console.log('[AccountUpgrade] Authorizing', authorizeKeys.length, 'key(s)');
-  console.log('[AccountUpgrade] Admin expiry (hex):', expiryHex);
 
-  const response = await fetch(PORTO_URL, {
+  const response = await fetch(PORTO_CONFIG.url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -129,31 +107,39 @@ export async function prepareUpgradeAccount(
 }
 
 /**
- * Sign the upgrade intent with EIP-712
+ * Sign the upgrade digest - use raw sign, not EIP-712
+ */
+export async function signUpgradeDigest(
+  account: PrivateKeyAccount,
+  digest: string
+): Promise<string> {
+  console.log('[AccountUpgrade] Signing upgrade digest...');
+  
+  // Use raw sign, not signTypedData (no EIP-191 prefix)
+  const signature = await account.sign({
+    hash: digest as Hex
+  });
+
+  console.log('[AccountUpgrade] Digest signed');
+  return signature;
+}
+
+/**
+ * Sign the upgrade intent with EIP-712 (kept for compatibility)
  */
 export async function signUpgradeIntent(
   account: PrivateKeyAccount,
   typedData: any
 ): Promise<string> {
-  // Convert domain chainId from hex to number if needed
-  const domain = {
-    ...typedData.domain,
-    chainId: typeof typedData.domain.chainId === 'string' 
-      ? parseInt(typedData.domain.chainId, 16)
-      : typedData.domain.chainId,
-  };
-
-  console.log('[AccountUpgrade] Signing upgrade intent...');
+  // This function is deprecated, use signUpgradeDigest instead
+  console.warn('[AccountUpgrade] signUpgradeIntent is deprecated, use signUpgradeDigest');
   
-  const signature = await account.signTypedData({
-    domain,
-    types: typedData.types,
-    primaryType: typedData.primaryType,
-    message: typedData.message,
-  });
-
-  console.log('[AccountUpgrade] Intent signed');
-  return signature;
+  // For backward compatibility, extract digest if available
+  if (typeof typedData === 'string') {
+    return signUpgradeDigest(account, typedData);
+  }
+  
+  throw new Error('signUpgradeIntent with typedData is no longer supported');
 }
 
 /**
@@ -166,7 +152,7 @@ export async function upgradeAccount(
 ): Promise<string> {
   console.log('[AccountUpgrade] Executing upgrade...');
 
-  const response = await fetch(PORTO_URL, {
+  const response = await fetch(PORTO_CONFIG.url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

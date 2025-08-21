@@ -6,17 +6,13 @@
  */
 
 import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts';
-import { encodeFunctionData } from 'viem';
-import { Storage } from './storage';
-import { isAccountDelegated, prepareUpgradeAccount, signUpgradeIntent, upgradeAccount } from './accountUpgrade';
+import { type Hex } from 'viem';
+import { isAccountDelegated } from './accountUpgrade';
+import { serializePublicKey, ETH_FEE_TOKEN } from './porto-utils';
+import { PORTO_CONFIG } from '../config/porto';
 
-// Configuration
-const PORTO_CONFIG = {
-  url: 'https://rise-testnet-porto.fly.dev',
-  chainId: 11155931, // Sepolia fork
-  retryAttempts: 3,
-  timeout: 30000,
-};
+// Use centralized configuration
+// PORTO_CONFIG imported from '../config/porto'
 
 // Types matching Porto relay API
 interface Call {
@@ -113,7 +109,14 @@ export class PortoClient {
       chainId: PORTO_CONFIG.chainId,
       calls,
       capabilities: {
-        meta: {} // Empty meta - Porto will use defaults
+        meta: {
+          feeToken: ETH_FEE_TOKEN // ETH as fee token for gasless sponsorship
+        }
+      },
+      key: {
+        prehash: false,
+        publicKey: serializePublicKey(this.account.address),
+        type: 'secp256k1'
       }
     };
 
@@ -129,28 +132,19 @@ export class PortoClient {
   }
 
   /**
-   * Sign intent using EIP-712
+   * Sign intent - using raw signature, not EIP-712
+   * Porto expects raw signatures on the digest
    */
-  async signIntent(typedData: any): Promise<string> {
+  async signIntent(digest: string): Promise<string> {
     if (!this.account) throw new Error('Porto client not initialized');
 
-    // Convert domain chainId from hex to number if needed
-    const domain = {
-      ...typedData.domain,
-      chainId: typeof typedData.domain.chainId === 'string' 
-        ? parseInt(typedData.domain.chainId, 16)
-        : typedData.domain.chainId,
-    };
-
-    console.log('[Porto] Signing intent...');
-    const signature = await this.account.signTypedData({
-      domain,
-      types: typedData.types,
-      primaryType: typedData.primaryType,
-      message: typedData.message,
+    console.log('[Porto] Signing digest...');
+    // Use raw sign, not signTypedData
+    const signature = await this.account.sign({ 
+      hash: digest as Hex 
     });
 
-    console.log('[Porto] Intent signed');
+    console.log('[Porto] Digest signed');
     return signature;
   }
 
@@ -159,12 +153,17 @@ export class PortoClient {
    */
   async sendPreparedCalls(
     context: any,
-    key: any,
     signature: string
   ): Promise<string> {
+    if (!this.account) throw new Error('Porto client not initialized');
+    
     const request: SendPreparedCallsRequest = {
       context,
-      key,
+      key: {
+        prehash: false,
+        publicKey: serializePublicKey(this.account.address),
+        type: 'secp256k1'
+      },
       signature,
     };
 
@@ -197,7 +196,7 @@ export class PortoClient {
    * Setup delegation for gasless transactions
    * This needs to be done once before sending any transactions
    */
-  async setupDelegation(sessionKeyAddress?: string): Promise<boolean> {
+  async setupDelegation(adminKeyAddress?: string): Promise<boolean> {
     if (!this.account) throw new Error('Porto client not initialized');
     
     // Check if already delegated
@@ -212,27 +211,16 @@ export class PortoClient {
     
     try {
       // Step 1: Prepare delegation
-      const expiry = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60); // 30 days
-      const expiryHex = '0x' + expiry.toString(16);
+      // Use empty key array for MVP - EOA will be implicit admin
+      const authorizeKeys: any[] = [];
       
-      const authorizeKeys = [
-        {
-          expiry: expiryHex,
-          prehash: false,
-          publicKey: this.account.address, // Main wallet
-          role: 'admin',
-          type: 'secp256k1',
-          permissions: []
-        }
-      ];
-      
-      // Add session key if provided
-      if (sessionKeyAddress) {
+      // Optionally add admin key if provided
+      if (adminKeyAddress) {
         authorizeKeys.push({
-          expiry: expiryHex,
+          expiry: '0x0', // Never expires
           prehash: false,
-          publicKey: sessionKeyAddress,
-          role: 'normal',
+          publicKey: serializePublicKey(adminKeyAddress),
+          role: 'admin',
           type: 'secp256k1',
           permissions: []
         });
@@ -240,7 +228,7 @@ export class PortoClient {
       
       const delegationParams = {
         address: this.account.address,
-        delegation: '0x912a428b1a7e7cb7bb2709a2799a01c020c5acd9', // Porto implementation
+        delegation: PORTO_CONFIG.contracts.proxy, // Use proxy address from config
         capabilities: {
           authorizeKeys
         },
@@ -254,29 +242,19 @@ export class PortoClient {
         throw new Error(`Delegation prepare failed: ${prepareResponse.error.message}`);
       }
       
-      // Step 2: Sign delegation
-      console.log('[Porto] Signing delegation...');
-      const authSig = await this.account.signMessage({
-        message: { raw: prepareResponse.result.digests.auth }
+      // Step 2: Sign delegation digests with raw sign (not signMessage)
+      console.log('[Porto] Signing delegation digests...');
+      const authSig = await this.account.sign({
+        hash: prepareResponse.result.digests.auth as Hex
       });
       
-      const domain = {
-        ...prepareResponse.result.typedData.domain,
-        chainId: typeof prepareResponse.result.typedData.domain.chainId === 'string' 
-          ? parseInt(prepareResponse.result.typedData.domain.chainId, 16)
-          : prepareResponse.result.typedData.domain.chainId,
-      };
-      
-      const execSig = await this.account.signTypedData({
-        domain,
-        types: prepareResponse.result.typedData.types,
-        primaryType: prepareResponse.result.typedData.primaryType,
-        message: prepareResponse.result.typedData.message,
+      const execSig = await this.account.sign({
+        hash: prepareResponse.result.digests.exec as Hex
       });
       
       // Step 3: Store delegation with Porto
       console.log('[Porto] Storing delegation with Porto...');
-      const storeResponse = await this.makeRpcCall('wallet_upgradeAccount', [{
+      await this.makeRpcCall('wallet_upgradeAccount', [{
         context: prepareResponse.result.context,
         signatures: {
           auth: authSig,
@@ -321,11 +299,11 @@ export class PortoClient {
     to: string,
     data: string,
     value: string = '0x0',
-    sessionKeyAddress?: string
+    adminKeyAddress?: string
   ): Promise<{ bundleId: string; status?: TransactionStatus }> {
     try {
       // Ensure delegation is set up
-      const delegated = await this.ensureAccountDelegated(sessionKeyAddress);
+      const delegated = await this.ensureAccountDelegated(adminKeyAddress);
       if (!delegated) {
         console.warn('[Porto] Failed to set up delegation, transaction may fail');
       }
@@ -334,18 +312,12 @@ export class PortoClient {
       const call: Call = { to, data, value };
       const prepareResult = await this.prepareCalls([call]);
 
-      // Step 2: Sign
-      const signature = await this.signIntent(prepareResult.typedData);
+      // Step 2: Sign the digest (not typedData)
+      const signature = await this.signIntent(prepareResult.digest);
 
       // Step 3: Send
-      const key = {
-        prehash: false,
-        publicKey: this.account.address,
-        type: 'secp256k1'
-      };
       const bundleId = await this.sendPreparedCalls(
         prepareResult.context,
-        key,
         signature
       );
 

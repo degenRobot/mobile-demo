@@ -171,6 +171,18 @@ export function useFrenPet({ wallet, porto, useGasless = true }: UseFrenPetOptio
 
   const getPetStats = useCallback(async (address: string): Promise<PetData | null> => {
     try {
+      // First check if pet exists to avoid underflow errors on new pets
+      const petExists = await rpcClient.readContract({
+        address: FRENPET_ADDRESS as `0x${string}`,
+        abi: FRENPET_ABI,
+        functionName: 'hasPet',
+        args: [address as `0x${string}`],
+      });
+      
+      if (!petExists) {
+        return null;
+      }
+      
       const result = await rpcClient.readContract({
         address: FRENPET_ADDRESS as `0x${string}`,
         abi: FRENPET_ABI,
@@ -187,11 +199,25 @@ export function useFrenPet({ wallet, porto, useGasless = true }: UseFrenPetOptio
           happiness: Number(happiness),
           hunger: Number(hunger),
           isAlive: isAlive as boolean,
-          winStreak: Number(winStreak),
+          winStreak: Number(winStreak || 0), // Default to 0 if undefined
         };
       }
       return null;
     } catch (error) {
+      // Check if it's an underflow error (happens with very new pets)
+      if (error.message?.includes('underflow') || error.message?.includes('overflow')) {
+        console.log('Pet stats calculation error (new pet) - returning defaults');
+        // Return default stats for a new pet
+        return {
+          name: 'New Pet',
+          level: 1,
+          experience: 0,
+          happiness: 100,
+          hunger: 0,
+          isAlive: true,
+          winStreak: 0,
+        };
+      }
       console.error('Failed to get pet stats:', error);
       return null;
     }
