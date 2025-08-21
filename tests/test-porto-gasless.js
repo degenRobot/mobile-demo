@@ -52,9 +52,6 @@ async function testPortoGasless() {
   console.log('\n📝 Step 1: Register Delegation with Admin Key');
   console.log('-'.repeat(40));
   
-  const expiry = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60); // 30 days
-  const expiryHex = '0x' + expiry.toString(16);
-  
   // Prepare upgrade with admin key authorization
   // For MVP, we use admin role since session keys can't authorize others
   const prepareParams = {
@@ -63,8 +60,8 @@ async function testPortoGasless() {
     capabilities: {
       authorizeKeys: [
         {
-          expiry: expiryHex,
           prehash: false,
+          expiry: "0x0",
           publicKey: adminAccount.address,
           role: 'admin',  // Must be admin to authorize other keys later
           type: 'secp256k1',
@@ -205,11 +202,10 @@ async function testPortoGasless() {
     }]);
     
     console.log('  ✅ Transaction sent:', sendResponse.id);
-    console.log('     View: https://testnet.riselabs.xyz/tx/' + sendResponse.id);
     
     // Wait for confirmation
-    console.log('\n⏳ Waiting 15 seconds for confirmation...');
-    await new Promise(r => setTimeout(r, 15000));
+    console.log('\n⏳ Waiting 3 seconds for confirmation...');
+    await new Promise(r => setTimeout(r, 3));
     
     // Check transaction status
     try {
