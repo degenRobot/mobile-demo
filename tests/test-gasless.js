@@ -28,7 +28,7 @@ async function testGasless() {
   
   console.log('🔑 Accounts:');
   console.log('  Main EOA:', mainAccount.address);
-  console.log('  Session Key:', sessionAccount.address);
+  console.log('  Admin Key (MVP):', sessionAccount.address);
   
   const client = createClient();
   const initialBalance = await client.getBalance({ address: mainAccount.address });
@@ -43,8 +43,8 @@ async function testGasless() {
   const expiry = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60); // 30 days
   const expiryHex = '0x' + expiry.toString(16);
   
-  // Prepare the upgrade - authorize session key (not the EOA itself)
-  // The EOA doesn't need authorization - it IS the owner
+  // Prepare the upgrade - authorize an admin key
+  // For MVP, we're making our second key an admin (not just session)
   const prepareParams = {
     address: mainAccount.address,
     delegation: CONFIG.PORTO_IMPLEMENTATION,
@@ -54,8 +54,8 @@ async function testGasless() {
           // Session key for operations
           expiry: expiryHex,
           prehash: false,
-          publicKey: sessionAccount.address,  // Session key's address
-          role: 'session',  // Session role, not admin
+          publicKey: sessionAccount.address,  // Admin key's address
+          role: 'admin',  // Admin role for MVP - can authorize other keys
           type: 'secp256k1',
           permissions: []  // Can add specific permissions later
         }
@@ -145,9 +145,8 @@ async function testGasless() {
     capabilities: {
       meta: {
         feeToken: ETH_ADDRESS  // Critical: ETH as fee token for sponsorship
-      },
-      // Add preCalls: true to ensure relay includes stored upgrade data
-      preCalls: true
+      }
+      // Relay automatically includes stored upgrade data as preCalls
     }
   };
   
@@ -184,8 +183,8 @@ async function testGasless() {
   const signingAccount = isFirstTransaction ? mainAccount : sessionAccount;
   const signingKey = isFirstTransaction ? mainAccount.address : sessionAccount.address;
   
-  console.log('  Signing with:', isFirstTransaction ? 'Main EOA (for delegation)' : 'Session Key');
-  console.log('  Note: Delegation + key auth will be deployed atomically');
+  console.log('  Signing with:', isFirstTransaction ? 'Main EOA (for delegation)' : 'Admin Key');
+  console.log('  Note: Delegation + admin key auth will be deployed atomically');
   
   const callSignature = await signingAccount.sign({
     hash: prepareCallsResponse.digest
