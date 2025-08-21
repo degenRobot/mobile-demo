@@ -21,7 +21,8 @@
 
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { encodeFunctionData } from 'viem';
-import { CONFIG, makeRelayCall, createClient } from './lib/porto-utils-enhanced.js';
+import { CONFIG, makeRelayCall, createClient, FRENPET_ABI } from './lib/porto-utils-enhanced.js';
+import { serializePublicKey } from './lib/porto-utils.js';
 import FrenPetSimpleJson from '../contracts/out/FrenPetSimple.sol/FrenPetSimple.json' with { type: 'json' };
 
 const FRENPET_SIMPLE_ADDRESS = '0x3fde139a94eef14c4eba229fdc80a54f7f5fbf25';
@@ -56,13 +57,13 @@ async function testPortoGasless() {
   // For MVP, we use admin role since session keys can't authorize others
   const prepareParams = {
     address: mainAccount.address,
-    delegation: CONFIG.PORTO_IMPLEMENTATION,
+    delegation: CONFIG.PORTO_PROXY,
     capabilities: {
       authorizeKeys: [
         {
           prehash: false,
           expiry: "0x0",
-          publicKey: adminAccount.address,
+          publicKey: serializePublicKey(adminAccount.address),
           role: 'admin',  // Must be admin to authorize other keys later
           type: 'secp256k1',
           permissions: []  // Admin has full permissions
@@ -156,7 +157,7 @@ async function testPortoGasless() {
     ...callParams,
     key: {
       prehash: false,
-      publicKey: mainAccount.address,  // Include key in request
+      publicKey: serializePublicKey(mainAccount.address),  // Include key in request
       type: 'secp256k1'
     }
   }]);
@@ -195,7 +196,7 @@ async function testPortoGasless() {
       context: prepareCallsResponse.context,
       key: {
         prehash: false,
-        publicKey: signingKey,
+        publicKey: serializePublicKey(signingKey),
         type: 'secp256k1'
       },
       signature: callSignature

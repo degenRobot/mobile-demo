@@ -5,6 +5,7 @@
 
 import { createPublicClient, http, parseAbi, encodeFunctionData } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import * as Hex from "ox/Hex"
 
 // =====================================
 // CONFIGURATION
@@ -280,4 +281,8 @@ export function encodeFrenPetCall(functionName, args = []) {
     functionName,
     args
   });
+}
+
+export function serializePublicKey(publicKey) {
+  return Hex.size(publicKey) < 32 ? Hex.padLeft(publicKey, 32) : publicKey
 }
