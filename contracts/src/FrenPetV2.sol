@@ -1,16 +1,154 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import "./interfaces/IPetTypes.sol";
-import "./interfaces/IInventory.sol";
-import "./interfaces/IBattleSystem.sol";
-
 /**
  * @title FrenPetV2
- * @notice Enhanced FrenPet with battle, inventory, marketplace, and evolution systems
- * @dev Modular architecture for future expansions
+ * @notice Complete FrenPet game with battle, inventory, marketplace, items, and evolution
+ * @dev All features consolidated into a single contract
  */
-contract FrenPetV2 is IPetTypes {
+contract FrenPetV2 {
+    // ============ Types ============
+    
+    enum PetType {
+        None,
+        Normal,
+        Fire,
+        Water,
+        Grass,
+        Electric,
+        Dragon
+    }
+    
+    enum BattleMove {
+        None,
+        Attack,
+        Defend,
+        Special
+    }
+    
+    enum ItemCategory {
+        None,
+        Weapon,
+        Armor,
+        Consumable,
+        Accessory,
+        Evolution,
+        Collectible
+    }
+    
+    enum ItemRarity {
+        Common,
+        Uncommon,
+        Rare,
+        Epic,
+        Legendary,
+        Mythic
+    }
+    
+    enum EffectType {
+        None,
+        HealInstant,
+        HealOverTime,
+        BoostAttack,
+        BoostDefense,
+        BoostSpeed,
+        BoostExperience,
+        BoostHappiness,
+        ReduceHunger,
+        ElementalDamage,
+        CriticalChance,
+        DamageReduction,
+        LifeSteal,
+        Immunity,
+        Resurrection
+    }
+    
+    // ============ Structures ============
+    
+    struct Pet {
+        string name;
+        PetType petType;
+        uint8 evolutionStage;
+        uint256 level;
+        uint256 experience;
+        uint256 lastHappiness;
+        uint256 lastHunger;
+        uint256 lastFed;
+        uint256 lastPlayed;
+        uint256 lastTrained;
+        uint256 lastBattle;
+        bool isAlive;
+        uint256 attack;
+        uint256 defense;
+        uint256 speed;
+        uint256 health;
+        uint256 maxHealth;
+    }
+    
+    struct PetStats {
+        uint256 attack;
+        uint256 defense;
+        uint256 speed;
+        uint256 health;
+    }
+    
+    struct Inventory {
+        uint256 basicFood;
+        uint256 coins;
+        uint256 healthPotions;
+        uint256 reviveTokens;
+        uint256 experienceBoosts;
+    }
+    
+    struct Battle {
+        address challenger;
+        address opponent;
+        BattleMove challengerMove;
+        BattleMove opponentMove;
+        address winner;
+        bool isActive;
+        uint256 startTime;
+    }
+    
+    struct MarketListing {
+        address seller;
+        uint256 itemId;
+        uint256 quantity;
+        uint256 price;
+        bool active;
+    }
+    
+    struct Item {
+        string name;
+        ItemCategory category;
+        ItemRarity rarity;
+        uint256 attackBonus;
+        uint256 defenseBonus;
+        uint256 speedBonus;
+        uint256 healthBonus;
+        EffectType effect;
+        uint256 effectValue;
+        uint256 effectDuration;
+        bool tradeable;
+        uint256 requiredLevel;
+        string description;
+    }
+    
+    struct Equipment {
+        uint256 weapon;
+        uint256 armor;
+        uint256 accessory1;
+        uint256 accessory2;
+        uint256 accessory3;
+    }
+    
+    struct ActiveEffect {
+        EffectType effectType;
+        uint256 value;
+        uint256 endTime;
+        uint256 itemId;
+    }
+    
     // ============ State Variables ============
     
     mapping(address => Pet) public pets;
@@ -18,28 +156,53 @@ contract FrenPetV2 is IPetTypes {
     mapping(address => Inventory) public inventories;
     mapping(uint256 => Battle) public battles;
     mapping(address => uint256) public activeBattles;
-    mapping(uint256 => MarketListing) public marketplace;
+    mapping(uint256 => MarketListing) public marketplaceListings;
+    mapping(address => uint256) public lastDailyReward;
+    
+    // Item system
+    mapping(uint256 => Item) public items;
+    mapping(address => mapping(uint256 => uint256)) public playerItems;
+    mapping(address => Equipment) public playerEquipment;
+    mapping(address => ActiveEffect[]) public activeEffects;
+    uint256 public nextItemId = 1;
     
     uint256 public nextBattleId = 1;
     uint256 public nextListingId = 1;
+    
+    // Game constants
     uint256 public constant COINS_PER_WIN = 50;
     uint256 public constant COINS_PER_LEVEL = 10;
-    
-    // Time-based mechanics
     uint256 public constant HAPPINESS_DECAY_RATE = 1 hours;
     uint256 public constant HUNGER_INCREASE_RATE = 2 hours;
     uint256 public constant BATTLE_COOLDOWN = 10 minutes;
+    uint256 public constant TRAINING_COOLDOWN = 1 minutes;
+    uint256 public constant ITEM_DROP_CHANCE = 30;
+    uint256 public constant RARE_DROP_CHANCE = 5;
+    uint256 public constant DAILY_REWARD_COOLDOWN = 24 hours;
     
     // ============ Events ============
     
     event PetCreated(address indexed owner, string name, PetType petType);
-    event PetEvolved(address indexed owner, PetType from, PetType to);
+    event PetEvolved(address indexed owner, PetType from, PetType to, uint256 stage);
+    event PetFed(address indexed owner, uint256 newHunger);
+    event PetPlayed(address indexed owner, uint256 newHappiness);
+    event PetTrained(address indexed owner, uint256 expGained);
+    event PetLevelUp(address indexed owner, uint256 newLevel);
+    event PetDied(address indexed owner, string name);
+    event PetRevived(address indexed owner, string name);
+    
     event BattleStarted(uint256 indexed battleId, address challenger, address opponent);
-    event BattleCompleted(uint256 indexed battleId, address winner);
-    event ItemUsed(address indexed owner, ItemType item);
-    event ItemListed(uint256 indexed listingId, address seller, ItemType item, uint256 price);
+    event BattleCompleted(uint256 indexed battleId, address winner, uint256 rewards);
+    event BattleMoveSubmitted(uint256 indexed battleId, address player, BattleMove move);
+    
+    event ItemCreated(uint256 indexed itemId, string name, ItemCategory category);
+    event ItemDropped(address indexed owner, uint256 itemId, ItemRarity rarity);
+    event ItemEquipped(address indexed owner, uint256 itemId);
+    event ItemUsed(address indexed owner, uint256 itemId);
+    event ItemListed(uint256 indexed listingId, address seller, uint256 itemId, uint256 price);
     event ItemPurchased(uint256 indexed listingId, address buyer);
-    event DailyRewardClaimed(address indexed player, uint256 coins, ItemType item);
+    
+    event DailyRewardClaimed(address indexed player, uint256 coins, uint256 itemId);
     
     // ============ Modifiers ============
     
@@ -54,40 +217,38 @@ contract FrenPetV2 is IPetTypes {
         _;
     }
     
+    // ============ Constructor ============
+    
+    constructor() {
+        _initializeDefaultItems();
+    }
+    
     // ============ Pet Management ============
     
-    /**
-     * @notice Create a new pet with chosen type
-     */
-    function createPet(string memory _name, PetType _type) external {
+    function createPet(string memory _name, uint8 _type) external {
         require(bytes(_name).length > 0 && bytes(_name).length <= 20, "Invalid name length");
-        require(_type != PetType.None, "Invalid pet type");
+        require(_type > 0 && _type <= uint8(PetType.Dragon), "Invalid pet type");
         
-        // Check if player has a dead pet
         if (hasPet[msg.sender]) {
             require(!isPetAlive(msg.sender), "Your current pet is still alive");
         }
         
-        // Get base stats for pet type
-        PetStats memory baseStats = getBaseStats(_type);
+        PetType petType = PetType(_type);
+        PetStats memory baseStats = getBaseStats(petType);
         
         pets[msg.sender] = Pet({
             name: _name,
-            petType: _type,
-            evolutionStage: 1,
+            petType: petType,
+            evolutionStage: 0,
             level: 1,
             experience: 0,
             lastHappiness: 100,
-            lastHunger: 0,
+            lastHunger: 50,
             lastFed: block.timestamp,
             lastPlayed: block.timestamp,
+            lastTrained: block.timestamp,
             lastBattle: 0,
-            birthTime: block.timestamp,
             isAlive: true,
-            wins: 0,
-            losses: 0,
-            winStreak: 0,
-            // Base stats
             attack: baseStats.attack,
             defense: baseStats.defense,
             speed: baseStats.speed,
@@ -95,609 +256,675 @@ contract FrenPetV2 is IPetTypes {
             maxHealth: baseStats.health
         });
         
-        // Initialize inventory
-        inventories[msg.sender].coins = 100; // Starting coins
-        inventories[msg.sender].lastDailyReward = 0;
-        
         hasPet[msg.sender] = true;
-        emit PetCreated(msg.sender, _name, _type);
+        
+        // Give starting inventory
+        inventories[msg.sender].basicFood = 5;
+        inventories[msg.sender].coins = 100;
+        inventories[msg.sender].healthPotions = 2;
+        
+        emit PetCreated(msg.sender, _name, petType);
     }
     
-    /**
-     * @notice Get base stats for a pet type
-     */
-    function getBaseStats(PetType _type) public pure returns (PetStats memory) {
-        if (_type == PetType.Fire) {
-            return PetStats(15, 10, 12, 100); // High attack
-        } else if (_type == PetType.Water) {
-            return PetStats(10, 15, 10, 120); // High defense & health
-        } else if (_type == PetType.Grass) {
-            return PetStats(12, 12, 8, 110); // Balanced
-        } else if (_type == PetType.Electric) {
-            return PetStats(13, 8, 15, 90); // High speed
-        } else if (_type == PetType.Dragon) {
-            return PetStats(18, 14, 14, 130); // Strong overall (rare)
-        } else {
-            return PetStats(10, 10, 10, 100); // Normal type
-        }
-    }
-    
-    /**
-     * @notice Feed your pet using an item or basic feeding
-     */
-    function feedPet(ItemType _food) external onlyPetOwner {
+    function feedPet(uint256 foodType) external onlyPetOwner {
         Pet storage pet = pets[msg.sender];
-        Inventory storage inv = inventories[msg.sender];
+        _updatePetStatus(msg.sender);
         
-        uint256 hungerReduction = 20; // Base feeding
-        uint256 expGain = 10;
-        
-        if (_food != ItemType.None) {
-            require(inv.items[_food] > 0, "You don't have this item");
-            inv.items[_food]--;
-            
-            // Different foods have different effects
-            if (_food == ItemType.BasicFood) {
-                hungerReduction = 30;
-                expGain = 15;
-            } else if (_food == ItemType.RareFood) {
-                hungerReduction = 50;
-                expGain = 30;
-                pet.lastHappiness = min(100, pet.lastHappiness + 10);
-            } else if (_food == ItemType.EpicFood) {
-                hungerReduction = 100;
-                expGain = 50;
-                pet.lastHappiness = 100;
-                pet.health = min(pet.maxHealth, pet.health + 20);
-            }
-            
-            emit ItemUsed(msg.sender, _food);
+        uint256 hungerReduction;
+        if (foodType == 0) {
+            // Basic food
+            require(inventories[msg.sender].basicFood > 0, "No basic food");
+            inventories[msg.sender].basicFood--;
+            hungerReduction = 20;
+        } else {
+            revert("Invalid food type");
         }
-        
-        updatePetStats(msg.sender);
         
         pet.lastHunger = pet.lastHunger > hungerReduction ? pet.lastHunger - hungerReduction : 0;
         pet.lastFed = block.timestamp;
-        pet.experience += expGain;
         
-        checkLevelUp(msg.sender);
+        emit PetFed(msg.sender, pet.lastHunger);
     }
     
-    /**
-     * @notice Play with your pet
-     */
     function playWithPet() external onlyPetOwner {
         Pet storage pet = pets[msg.sender];
-        updatePetStats(msg.sender);
+        _updatePetStatus(msg.sender);
         
-        pet.lastHappiness = 100;
+        pet.lastHappiness = pet.lastHappiness + 20 > 100 ? 100 : pet.lastHappiness + 20;
         pet.lastPlayed = block.timestamp;
         pet.experience += 5;
         
-        checkLevelUp(msg.sender);
+        _checkLevelUp(msg.sender);
+        emit PetPlayed(msg.sender, pet.lastHappiness);
     }
     
-    /**
-     * @notice Train your pet to gain experience and stats
-     */
     function trainPet() external onlyPetOwner {
         Pet storage pet = pets[msg.sender];
-        require(block.timestamp >= pet.lastBattle + BATTLE_COOLDOWN, "Pet needs rest");
+        require(block.timestamp >= pet.lastTrained + TRAINING_COOLDOWN, "Pet is resting");
         
-        updatePetStats(msg.sender);
+        _updatePetStatus(msg.sender);
         
-        // Training costs happiness but gains experience
-        require(pet.lastHappiness >= 20, "Pet too unhappy to train");
-        pet.lastHappiness -= 20;
-        pet.experience += 25;
+        uint256 expGain = 10 + (pet.level * 2);
+        pet.experience += expGain;
+        pet.lastTrained = block.timestamp;
         
-        // Small stat increases
-        if (block.number % 3 == 0) pet.attack++;
-        else if (block.number % 3 == 1) pet.defense++;
-        else pet.speed++;
+        // Training improves stats slightly
+        pet.attack += 1;
+        pet.defense += 1;
+        pet.speed += 1;
         
-        checkLevelUp(msg.sender);
+        _checkLevelUp(msg.sender);
+        emit PetTrained(msg.sender, expGain);
     }
     
-    // ============ Evolution System ============
-    
-    /**
-     * @notice Evolve your pet when conditions are met
-     */
-    function evolvePet() external onlyPetOwner {
+    function revivePet() external {
+        require(hasPet[msg.sender], "You don't have a pet");
+        require(!pets[msg.sender].isAlive, "Pet is already alive");
+        require(inventories[msg.sender].reviveTokens > 0, "No revive tokens");
+        
+        inventories[msg.sender].reviveTokens--;
         Pet storage pet = pets[msg.sender];
-        require(canEvolve(msg.sender), "Evolution conditions not met");
         
-        PetType oldType = pet.petType;
+        pet.isAlive = true;
+        pet.health = pet.maxHealth / 2;
+        pet.lastHappiness = 50;
+        pet.lastHunger = 50;
+        pet.lastFed = block.timestamp;
+        pet.lastPlayed = block.timestamp;
         
-        // Evolution paths
-        if (pet.evolutionStage == 1 && pet.level >= 10) {
-            pet.evolutionStage = 2;
-            // Stat boosts
-            pet.attack += 5;
-            pet.defense += 5;
-            pet.speed += 3;
-            pet.maxHealth += 20;
-            pet.health = pet.maxHealth;
-        } else if (pet.evolutionStage == 2 && pet.level >= 25) {
-            pet.evolutionStage = 3;
-            // Major stat boosts
-            pet.attack += 10;
-            pet.defense += 10;
-            pet.speed += 5;
-            pet.maxHealth += 30;
-            pet.health = pet.maxHealth;
-            
-            // Special evolution to Dragon type at stage 3
-            if (pet.wins >= 50) {
-                pet.petType = PetType.Dragon;
-            }
-        }
-        
-        emit PetEvolved(msg.sender, oldType, pet.petType);
-    }
-    
-    /**
-     * @notice Check if pet can evolve
-     */
-    function canEvolve(address _owner) public view returns (bool) {
-        Pet memory pet = pets[_owner];
-        if (pet.evolutionStage == 1 && pet.level >= 10) return true;
-        if (pet.evolutionStage == 2 && pet.level >= 25) return true;
-        return false;
+        emit PetRevived(msg.sender, pet.name);
     }
     
     // ============ Battle System ============
     
-    /**
-     * @notice Create a battle challenge
-     */
-    function createBattleChallenge(address _opponent) external onlyPetOwner noBattleActive {
+    function createBattleChallenge(address _opponent) external onlyPetOwner noBattleActive returns (uint256) {
         require(_opponent != msg.sender, "Cannot battle yourself");
         require(hasPet[_opponent], "Opponent doesn't have a pet");
         require(isPetAlive(_opponent), "Opponent's pet is not alive");
+        require(activeBattles[_opponent] == 0, "Opponent is in another battle");
         
-        Pet storage myPet = pets[msg.sender];
-        require(block.timestamp >= myPet.lastBattle + BATTLE_COOLDOWN, "Pet needs rest");
+        Pet storage challengerPet = pets[msg.sender];
+        require(block.timestamp >= challengerPet.lastBattle + BATTLE_COOLDOWN, "Pet needs rest");
         
         uint256 battleId = nextBattleId++;
+        
         battles[battleId] = Battle({
             challenger: msg.sender,
             opponent: _opponent,
-            winner: address(0),
-            startTime: block.timestamp,
-            completed: false,
             challengerMove: BattleMove.None,
-            opponentMove: BattleMove.None
+            opponentMove: BattleMove.None,
+            winner: address(0),
+            isActive: true,
+            startTime: block.timestamp
         });
         
         activeBattles[msg.sender] = battleId;
         activeBattles[_opponent] = battleId;
         
         emit BattleStarted(battleId, msg.sender, _opponent);
+        return battleId;
     }
     
-    /**
-     * @notice Submit your move for a battle
-     */
-    function submitBattleMove(BattleMove _move) external {
+    function submitBattleMove(uint8 _move) external {
+        require(_move >= 1 && _move <= uint8(BattleMove.Special), "Invalid move");
         uint256 battleId = activeBattles[msg.sender];
-        require(battleId != 0, "No active battle");
+        require(battleId > 0, "Not in battle");
         
         Battle storage battle = battles[battleId];
-        require(!battle.completed, "Battle already completed");
-        require(_move != BattleMove.None, "Invalid move");
+        require(battle.isActive, "Battle not active");
+        
+        BattleMove move = BattleMove(_move);
         
         if (msg.sender == battle.challenger) {
-            require(battle.challengerMove == BattleMove.None, "Move already submitted");
-            battle.challengerMove = _move;
+            require(battle.challengerMove == BattleMove.None, "Already submitted move");
+            battle.challengerMove = move;
         } else if (msg.sender == battle.opponent) {
-            require(battle.opponentMove == BattleMove.None, "Move already submitted");
-            battle.opponentMove = _move;
+            require(battle.opponentMove == BattleMove.None, "Already submitted move");
+            battle.opponentMove = move;
         } else {
             revert("Not a participant");
         }
         
+        emit BattleMoveSubmitted(battleId, msg.sender, move);
+        
         // If both moves submitted, resolve battle
         if (battle.challengerMove != BattleMove.None && battle.opponentMove != BattleMove.None) {
-            resolveBattle(battleId);
+            _resolveBattle(battleId);
         }
     }
     
-    /**
-     * @notice Resolve a battle once both moves are submitted
-     */
-    function resolveBattle(uint256 _battleId) internal {
-        Battle storage battle = battles[_battleId];
+    function _resolveBattle(uint256 battleId) private {
+        Battle storage battle = battles[battleId];
         
-        (address winner, address loser) = determineBattleWinner(_battleId);
+        address winner = _calculateBattleWinner(
+            battle.challenger,
+            battle.opponent,
+            battle.challengerMove,
+            battle.opponentMove
+        );
         
         battle.winner = winner;
-        battle.completed = true;
+        battle.isActive = false;
         
-        updateBattleResults(winner, loser);
+        // Update battle timestamps
+        pets[battle.challenger].lastBattle = block.timestamp;
+        pets[battle.opponent].lastBattle = block.timestamp;
         
+        // Clear active battles
         activeBattles[battle.challenger] = 0;
         activeBattles[battle.opponent] = 0;
         
-        emit BattleCompleted(_battleId, winner);
-    }
-    
-    function determineBattleWinner(uint256 _battleId) internal view returns (address winner, address loser) {
-        Battle storage battle = battles[_battleId];
-        Pet storage challengerPet = pets[battle.challenger];
-        Pet storage opponentPet = pets[battle.opponent];
-        
-        uint256 challengerPower = calculateBattlePower(
-            challengerPet, 
-            battle.challengerMove,
-            opponentPet.petType
-        );
-        
-        uint256 opponentPower = calculateBattlePower(
-            opponentPet,
-            battle.opponentMove,
-            challengerPet.petType
-        );
-        
-        if (challengerPower > opponentPower) {
-            return (battle.challenger, battle.opponent);
-        } else if (opponentPower > challengerPower) {
-            return (battle.opponent, battle.challenger);
-        } else {
-            // Tie goes to higher level
-            if (challengerPet.level >= opponentPet.level) {
-                return (battle.challenger, battle.opponent);
-            } else {
-                return (battle.opponent, battle.challenger);
+        // Reward winner
+        if (winner != address(0)) {
+            inventories[winner].coins += COINS_PER_WIN;
+            pets[winner].experience += 20;
+            _checkLevelUp(winner);
+            
+            // Random item drop
+            if (_random(100) < ITEM_DROP_CHANCE) {
+                uint256 itemId = _getRandomDropItem();
+                playerItems[winner][itemId]++;
+                emit ItemDropped(winner, itemId, items[itemId].rarity);
             }
         }
+        
+        emit BattleCompleted(battleId, winner, COINS_PER_WIN);
     }
     
-    function updateBattleResults(address _winner, address _loser) internal {
-        Pet storage winnerPet = pets[_winner];
-        Pet storage loserPet = pets[_loser];
+    function _calculateBattleWinner(
+        address challenger,
+        address opponent,
+        BattleMove challengerMove,
+        BattleMove opponentMove
+    ) private view returns (address) {
+        PetStats memory challengerStats = getEnhancedPetStats(challenger);
+        PetStats memory opponentStats = getEnhancedPetStats(opponent);
         
-        winnerPet.wins++;
-        winnerPet.winStreak++;
-        winnerPet.experience += 50;
-        winnerPet.lastBattle = block.timestamp;
+        uint256 challengerScore = _calculateBattleScore(
+            challengerStats,
+            challengerMove,
+            pets[challenger].petType,
+            pets[opponent].petType
+        );
         
-        loserPet.losses++;
-        loserPet.winStreak = 0;
-        loserPet.experience += 20;
-        loserPet.lastBattle = block.timestamp;
-        loserPet.health = loserPet.health > 20 ? loserPet.health - 20 : 0;
+        uint256 opponentScore = _calculateBattleScore(
+            opponentStats,
+            opponentMove,
+            pets[opponent].petType,
+            pets[challenger].petType
+        );
         
-        inventories[_winner].coins += COINS_PER_WIN;
-        
-        checkLevelUp(_winner);
-        checkLevelUp(_loser);
-    }
-    
-    /**
-     * @notice Calculate battle power based on stats, move, and type advantage
-     */
-    function calculateBattlePower(
-        Pet memory _pet,
-        BattleMove _move,
-        PetType _opponentType
-    ) internal pure returns (uint256) {
-        uint256 basePower = calculateBasePower(_pet);
-        basePower = applyMoveMultiplier(basePower, _move, _pet.defense);
-        basePower = applyTypeAdvantage(basePower, _pet.petType, _opponentType);
-        basePower += _pet.level * 10;
-        basePower = basePower * _pet.health / _pet.maxHealth;
-        return basePower;
-    }
-    
-    function calculateBasePower(Pet memory _pet) internal pure returns (uint256) {
-        return _pet.attack * 10 + _pet.speed * 5 + _pet.defense * 3;
-    }
-    
-    function applyMoveMultiplier(
-        uint256 _power,
-        BattleMove _move,
-        uint256 _defense
-    ) internal pure returns (uint256) {
-        if (_move == BattleMove.Attack) {
-            return _power * 12 / 10;
-        } else if (_move == BattleMove.Defend) {
-            return _power * 8 / 10 + _defense * 20;
-        } else if (_move == BattleMove.Special) {
-            return _power * 15 / 10;
+        if (challengerScore > opponentScore) {
+            return challenger;
+        } else if (opponentScore > challengerScore) {
+            return opponent;
+        } else {
+            // Tie - higher speed wins
+            return challengerStats.speed >= opponentStats.speed ? challenger : opponent;
         }
-        return _power;
     }
     
-    /**
-     * @notice Apply type advantages (Pokemon-style)
-     */
-    function applyTypeAdvantage(
-        uint256 _power,
-        PetType _attacker,
-        PetType _defender
-    ) internal pure returns (uint256) {
-        // Fire > Grass, Grass > Water, Water > Fire
-        if (_attacker == PetType.Fire && _defender == PetType.Grass) {
-            return _power * 15 / 10; // 1.5x
-        } else if (_attacker == PetType.Grass && _defender == PetType.Water) {
-            return _power * 15 / 10;
-        } else if (_attacker == PetType.Water && _defender == PetType.Fire) {
-            return _power * 15 / 10;
-        } else if (_attacker == PetType.Electric && _defender == PetType.Water) {
-            return _power * 15 / 10;
-        } else if (_attacker == PetType.Dragon) {
-            return _power * 12 / 10; // Dragons are strong
+    function _calculateBattleScore(
+        PetStats memory stats,
+        BattleMove move,
+        PetType attackerType,
+        PetType defenderType
+    ) private pure returns (uint256) {
+        uint256 score = 0;
+        
+        if (move == BattleMove.Attack) {
+            score = stats.attack * 2 + stats.speed;
+        } else if (move == BattleMove.Defend) {
+            score = stats.defense * 3 + stats.health / 10;
+        } else if (move == BattleMove.Special) {
+            score = stats.attack + stats.speed * 2;
         }
         
-        // Reverse disadvantages
-        if (_attacker == PetType.Grass && _defender == PetType.Fire) {
-            return _power * 7 / 10; // 0.7x
-        } else if (_attacker == PetType.Water && _defender == PetType.Grass) {
-            return _power * 7 / 10;
-        } else if (_attacker == PetType.Fire && _defender == PetType.Water) {
-            return _power * 7 / 10;
-        }
+        // Type advantages
+        uint256 multiplier = _getTypeAdvantage(attackerType, defenderType);
+        score = (score * multiplier) / 100;
         
-        return _power;
+        return score;
     }
     
-    // ============ Inventory & Items ============
+    function _getTypeAdvantage(PetType attacker, PetType defender) private pure returns (uint256) {
+        if (attacker == PetType.Fire && defender == PetType.Grass) return 150;
+        if (attacker == PetType.Water && defender == PetType.Fire) return 150;
+        if (attacker == PetType.Grass && defender == PetType.Water) return 150;
+        if (attacker == PetType.Electric && defender == PetType.Water) return 150;
+        if (attacker == PetType.Dragon && defender != PetType.Dragon) return 125;
+        
+        if (attacker == PetType.Fire && defender == PetType.Water) return 50;
+        if (attacker == PetType.Water && defender == PetType.Grass) return 50;
+        if (attacker == PetType.Grass && defender == PetType.Fire) return 50;
+        if (attacker == PetType.Water && defender == PetType.Electric) return 50;
+        
+        return 100; // No advantage
+    }
     
-    /**
-     * @notice Use an item from inventory
-     */
-    function useItem(ItemType _item) external onlyPetOwner {
-        Inventory storage inv = inventories[msg.sender];
-        require(inv.items[_item] > 0, "You don't have this item");
+    // ============ Item System ============
+    
+    function _initializeDefaultItems() private {
+        // Weapons
+        _createItem("Wooden Sword", ItemCategory.Weapon, ItemRarity.Common, 5, 0, 0, 0, EffectType.None, 0, 0, true, 1);
+        _createItem("Iron Sword", ItemCategory.Weapon, ItemRarity.Uncommon, 10, 0, 2, 0, EffectType.None, 0, 0, true, 5);
+        _createItem("Dragon Blade", ItemCategory.Weapon, ItemRarity.Legendary, 25, 5, 5, 0, EffectType.ElementalDamage, 10, 0, true, 15);
+        
+        // Armor
+        _createItem("Leather Armor", ItemCategory.Armor, ItemRarity.Common, 0, 5, 0, 10, EffectType.None, 0, 0, true, 1);
+        _createItem("Steel Armor", ItemCategory.Armor, ItemRarity.Uncommon, 0, 15, 0, 25, EffectType.DamageReduction, 10, 0, true, 8);
+        
+        // Consumables
+        _createItem("Health Potion", ItemCategory.Consumable, ItemRarity.Common, 0, 0, 0, 0, EffectType.HealInstant, 50, 0, true, 1);
+        _createItem("Strength Elixir", ItemCategory.Consumable, ItemRarity.Rare, 0, 0, 0, 0, EffectType.BoostAttack, 20, 300, true, 5);
+        
+        // Accessories
+        _createItem("Speed Boots", ItemCategory.Accessory, ItemRarity.Uncommon, 0, 0, 10, 0, EffectType.None, 0, 0, true, 3);
+        _createItem("Lucky Charm", ItemCategory.Accessory, ItemRarity.Rare, 5, 5, 5, 5, EffectType.CriticalChance, 15, 0, true, 10);
+        
+        // Evolution items
+        _createItem("Fire Stone", ItemCategory.Evolution, ItemRarity.Epic, 0, 0, 0, 0, EffectType.None, 0, 0, false, 10);
+    }
+    
+    function _createItem(
+        string memory name,
+        ItemCategory category,
+        ItemRarity rarity,
+        uint256 attack,
+        uint256 defense,
+        uint256 speed,
+        uint256 health,
+        EffectType effect,
+        uint256 effectValue,
+        uint256 effectDuration,
+        bool tradeable,
+        uint256 requiredLevel
+    ) private {
+        items[nextItemId] = Item({
+            name: name,
+            category: category,
+            rarity: rarity,
+            attackBonus: attack,
+            defenseBonus: defense,
+            speedBonus: speed,
+            healthBonus: health,
+            effect: effect,
+            effectValue: effectValue,
+            effectDuration: effectDuration,
+            tradeable: tradeable,
+            requiredLevel: requiredLevel,
+            description: ""
+        });
+        
+        emit ItemCreated(nextItemId, name, category);
+        nextItemId++;
+    }
+    
+    function equipItemToPet(uint256 itemId) external onlyPetOwner {
+        require(playerItems[msg.sender][itemId] > 0, "You don't own this item");
+        Item memory item = items[itemId];
+        require(pets[msg.sender].level >= item.requiredLevel, "Pet level too low");
+        
+        Equipment storage equipment = playerEquipment[msg.sender];
+        
+        if (item.category == ItemCategory.Weapon) {
+            if (equipment.weapon != 0) {
+                playerItems[msg.sender][equipment.weapon]++;
+            }
+            equipment.weapon = itemId;
+        } else if (item.category == ItemCategory.Armor) {
+            if (equipment.armor != 0) {
+                playerItems[msg.sender][equipment.armor]++;
+            }
+            equipment.armor = itemId;
+        } else if (item.category == ItemCategory.Accessory) {
+            if (equipment.accessory1 == 0) {
+                equipment.accessory1 = itemId;
+            } else if (equipment.accessory2 == 0) {
+                equipment.accessory2 = itemId;
+            } else if (equipment.accessory3 == 0) {
+                equipment.accessory3 = itemId;
+            } else {
+                revert("All accessory slots full");
+            }
+        } else {
+            revert("Item cannot be equipped");
+        }
+        
+        playerItems[msg.sender][itemId]--;
+        emit ItemEquipped(msg.sender, itemId);
+    }
+    
+    function useItem(uint256 itemId) external onlyPetOwner {
+        require(playerItems[msg.sender][itemId] > 0, "You don't own this item");
+        Item memory item = items[itemId];
+        require(item.category == ItemCategory.Consumable, "Not consumable");
         
         Pet storage pet = pets[msg.sender];
-        inv.items[_item]--;
         
-        // Apply item effects
-        if (_item == ItemType.HealthPotion) {
-            pet.health = min(pet.maxHealth, pet.health + 50);
-        } else if (_item == ItemType.RevivePotion) {
-            if (!pet.isAlive) {
-                pet.isAlive = true;
-                pet.health = pet.maxHealth / 2;
-                pet.lastHappiness = 50;
-                pet.lastHunger = 50;
-                pet.lastFed = block.timestamp;
-                pet.lastPlayed = block.timestamp;
-            }
-        } else if (_item == ItemType.ExpBoost) {
-            pet.experience += 100;
-            checkLevelUp(msg.sender);
-        } else if (_item == ItemType.StatBoost) {
-            pet.attack += 2;
-            pet.defense += 2;
-            pet.speed += 1;
+        if (item.effect == EffectType.HealInstant) {
+            pet.health = pet.health + item.effectValue > pet.maxHealth ? 
+                pet.maxHealth : pet.health + item.effectValue;
+        } else if (item.effectDuration > 0) {
+            activeEffects[msg.sender].push(ActiveEffect({
+                effectType: item.effect,
+                value: item.effectValue,
+                endTime: block.timestamp + item.effectDuration,
+                itemId: itemId
+            }));
         }
         
-        emit ItemUsed(msg.sender, _item);
-    }
-    
-    /**
-     * @notice Claim daily reward
-     */
-    function claimDailyReward() external onlyPetOwner {
-        Inventory storage inv = inventories[msg.sender];
-        require(block.timestamp >= inv.lastDailyReward + 1 days, "Already claimed today");
-        
-        inv.lastDailyReward = block.timestamp;
-        inv.coins += 50;
-        
-        // Random item reward
-        uint256 random = uint256(keccak256(abi.encodePacked(block.timestamp, msg.sender))) % 100;
-        ItemType rewardItem;
-        
-        if (random < 40) {
-            rewardItem = ItemType.BasicFood;
-        } else if (random < 70) {
-            rewardItem = ItemType.Toy;
-        } else if (random < 85) {
-            rewardItem = ItemType.HealthPotion;
-        } else if (random < 95) {
-            rewardItem = ItemType.RareFood;
-        } else {
-            rewardItem = ItemType.ExpBoost;
-        }
-        
-        inv.items[rewardItem]++;
-        emit DailyRewardClaimed(msg.sender, 50, rewardItem);
+        playerItems[msg.sender][itemId]--;
+        emit ItemUsed(msg.sender, itemId);
     }
     
     // ============ Marketplace ============
     
-    /**
-     * @notice List an item for sale
-     */
-    function listItem(ItemType _item, uint256 _quantity, uint256 _pricePerItem) external {
-        require(_item != ItemType.None, "Invalid item");
-        require(_quantity > 0, "Invalid quantity");
-        require(_pricePerItem > 0, "Invalid price");
-        
-        Inventory storage inv = inventories[msg.sender];
-        require(inv.items[_item] >= _quantity, "Insufficient items");
-        
-        // Remove items from inventory
-        inv.items[_item] -= _quantity;
+    function listItemForSale(uint256 itemId, uint256 quantity, uint256 price) external returns (uint256) {
+        require(playerItems[msg.sender][itemId] >= quantity, "Insufficient items");
+        require(items[itemId].tradeable, "Item not tradeable");
+        require(price > 0, "Price must be positive");
         
         uint256 listingId = nextListingId++;
-        marketplace[listingId] = MarketListing({
+        
+        marketplaceListings[listingId] = MarketListing({
             seller: msg.sender,
-            item: _item,
-            quantity: _quantity,
-            pricePerItem: _pricePerItem,
+            itemId: itemId,
+            quantity: quantity,
+            price: price,
             active: true
         });
         
-        emit ItemListed(listingId, msg.sender, _item, _pricePerItem);
+        playerItems[msg.sender][itemId] -= quantity;
+        
+        emit ItemListed(listingId, msg.sender, itemId, price);
+        return listingId;
     }
     
-    /**
-     * @notice Buy an item from marketplace
-     */
-    function buyItem(uint256 _listingId, uint256 _quantity) external {
-        MarketListing storage listing = marketplace[_listingId];
+    function purchaseFromMarketplace(uint256 listingId) external {
+        MarketListing storage listing = marketplaceListings[listingId];
         require(listing.active, "Listing not active");
-        require(_quantity > 0 && _quantity <= listing.quantity, "Invalid quantity");
+        require(inventories[msg.sender].coins >= listing.price, "Insufficient coins");
         
-        uint256 totalPrice = listing.pricePerItem * _quantity;
-        Inventory storage buyerInv = inventories[msg.sender];
-        require(buyerInv.coins >= totalPrice, "Insufficient coins");
+        inventories[msg.sender].coins -= listing.price;
+        inventories[listing.seller].coins += listing.price;
         
-        // Transfer coins
-        buyerInv.coins -= totalPrice;
-        inventories[listing.seller].coins += totalPrice;
+        playerItems[msg.sender][listing.itemId] += listing.quantity;
+        listing.active = false;
         
-        // Transfer items
-        buyerInv.items[listing.item] += _quantity;
-        listing.quantity -= _quantity;
-        
-        if (listing.quantity == 0) {
-            listing.active = false;
-        }
-        
-        emit ItemPurchased(_listingId, msg.sender);
+        emit ItemPurchased(listingId, msg.sender);
     }
     
-    /**
-     * @notice Cancel a marketplace listing
-     */
-    function cancelListing(uint256 _listingId) external {
-        MarketListing storage listing = marketplace[_listingId];
+    function cancelListing(uint256 listingId) external {
+        MarketListing storage listing = marketplaceListings[listingId];
         require(listing.seller == msg.sender, "Not your listing");
         require(listing.active, "Listing not active");
         
-        // Return items to seller
-        inventories[msg.sender].items[listing.item] += listing.quantity;
+        playerItems[msg.sender][listing.itemId] += listing.quantity;
         listing.active = false;
+    }
+    
+    // ============ Evolution System ============
+    
+    function canEvolve(address owner) public view returns (bool) {
+        Pet memory pet = pets[owner];
+        if (pet.evolutionStage >= 2) return false;
+        
+        if (pet.evolutionStage == 0 && pet.level >= 10) return true;
+        if (pet.evolutionStage == 1 && pet.level >= 25) return true;
+        
+        return false;
+    }
+    
+    function evolvePet() external onlyPetOwner {
+        require(canEvolve(msg.sender), "Cannot evolve yet");
+        
+        Pet storage pet = pets[msg.sender];
+        PetType oldType = pet.petType;
+        
+        pet.evolutionStage++;
+        
+        // Evolution bonuses
+        pet.attack += 10;
+        pet.defense += 10;
+        pet.speed += 5;
+        pet.maxHealth += 50;
+        pet.health = pet.maxHealth;
+        
+        // Special evolution for dragons
+        if (pet.petType == PetType.Normal && pet.evolutionStage == 2) {
+            pet.petType = PetType.Dragon;
+        }
+        
+        emit PetEvolved(msg.sender, oldType, pet.petType, pet.evolutionStage);
+    }
+    
+    // ============ Daily Rewards ============
+    
+    function claimDailyReward() external onlyPetOwner {
+        require(lastDailyReward[msg.sender] == 0 || block.timestamp >= lastDailyReward[msg.sender] + DAILY_REWARD_COOLDOWN, "Already claimed today");
+        
+        lastDailyReward[msg.sender] = block.timestamp;
+        
+        // Base reward
+        uint256 coins = 100 + (pets[msg.sender].level * 10);
+        inventories[msg.sender].coins += coins;
+        inventories[msg.sender].basicFood += 3;
+        
+        // Random item chance
+        uint256 itemId = 0;
+        if (_random(100) < 20) {
+            itemId = _getRandomDropItem();
+            playerItems[msg.sender][itemId]++;
+        }
+        
+        emit DailyRewardClaimed(msg.sender, coins, itemId);
     }
     
     // ============ Helper Functions ============
     
-    function updatePetStats(address owner) internal {
+    function _updatePetStatus(address owner) private {
         Pet storage pet = pets[owner];
-        if (!pet.isAlive) return;
         
-        uint256 timeSinceLastFed = block.timestamp - pet.lastFed;
-        uint256 timeSinceLastPlayed = block.timestamp - pet.lastPlayed;
+        uint256 timeSinceFed = block.timestamp - pet.lastFed;
+        uint256 timeSincePlayed = block.timestamp - pet.lastPlayed;
         
-        // Calculate current hunger
-        uint256 hungerIncrease = (timeSinceLastFed / HUNGER_INCREASE_RATE) * 10;
-        uint256 currentHunger = pet.lastHunger + hungerIncrease > 100 ? 100 : pet.lastHunger + hungerIncrease;
+        // Update hunger (increases over time)
+        uint256 hungerIncrease = timeSinceFed / HUNGER_INCREASE_RATE * 10;
+        pet.lastHunger = pet.lastHunger + hungerIncrease > 100 ? 100 : pet.lastHunger + hungerIncrease;
         
-        // Calculate current happiness
-        uint256 happinessDecrease = (timeSinceLastPlayed / HAPPINESS_DECAY_RATE) * 10;
-        uint256 currentHappiness = pet.lastHappiness < happinessDecrease ? 0 : pet.lastHappiness - happinessDecrease;
-        
-        pet.lastHunger = currentHunger;
-        pet.lastHappiness = currentHappiness;
+        // Update happiness (decreases over time)
+        uint256 happinessDecrease = timeSincePlayed / HAPPINESS_DECAY_RATE * 10;
+        pet.lastHappiness = pet.lastHappiness > happinessDecrease ? 
+            pet.lastHappiness - happinessDecrease : 0;
         
         // Check if pet dies
-        if (currentHunger >= 100 || currentHappiness == 0 || pet.health == 0) {
+        if (pet.lastHunger >= 100 || pet.lastHappiness == 0) {
             pet.isAlive = false;
+            emit PetDied(owner, pet.name);
         }
     }
     
-    function checkLevelUp(address owner) internal {
+    function _checkLevelUp(address owner) private {
         Pet storage pet = pets[owner];
         uint256 requiredExp = pet.level * 100;
         
         while (pet.experience >= requiredExp) {
-            pet.level++;
             pet.experience -= requiredExp;
+            pet.level++;
             
-            // Stat increases on level up
+            // Level up bonuses
             pet.attack += 2;
             pet.defense += 2;
             pet.speed += 1;
             pet.maxHealth += 10;
-            pet.health = pet.maxHealth; // Full heal on level up
+            pet.health = pet.maxHealth;
             
-            // Coin reward
             inventories[owner].coins += COINS_PER_LEVEL;
             
+            emit PetLevelUp(owner, pet.level);
             requiredExp = pet.level * 100;
         }
     }
     
-    function isPetAlive(address _owner) public view returns (bool) {
-        Pet memory pet = pets[_owner];
-        if (!pet.isAlive) return false;
-        
-        uint256 timeSinceLastFed = block.timestamp - pet.lastFed;
-        uint256 timeSinceLastPlayed = block.timestamp - pet.lastPlayed;
-        
-        uint256 currentHunger = pet.lastHunger + (timeSinceLastFed / HUNGER_INCREASE_RATE) * 10;
-        uint256 currentHappiness = pet.lastHappiness > (timeSinceLastPlayed / HAPPINESS_DECAY_RATE) * 10 ? 
-            pet.lastHappiness - (timeSinceLastPlayed / HAPPINESS_DECAY_RATE) * 10 : 0;
-        
-        return currentHunger < 100 && currentHappiness > 0 && pet.health > 0;
+    function _getRandomDropItem() private view returns (uint256) {
+        uint256 rand = _random(100);
+        if (rand < 60) return 1 + (rand % 3); // Common items
+        if (rand < 85) return 4 + (rand % 2); // Uncommon items
+        if (rand < 95) return 6 + (rand % 2); // Rare items
+        return 8 + (rand % 2); // Epic items
     }
     
-    function min(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a < b ? a : b;
+    function _random(uint256 max) private view returns (uint256) {
+        return uint256(keccak256(abi.encodePacked(block.timestamp, block.prevrandao, msg.sender))) % max;
+    }
+    
+    function isPetAlive(address owner) public view returns (bool) {
+        if (!hasPet[owner]) return false;
+        Pet memory pet = pets[owner];
+        
+        uint256 timeSinceFed = block.timestamp - pet.lastFed;
+        uint256 timeSincePlayed = block.timestamp - pet.lastPlayed;
+        
+        uint256 currentHunger = pet.lastHunger + (timeSinceFed / HUNGER_INCREASE_RATE * 10);
+        uint256 currentHappiness = pet.lastHappiness > (timeSincePlayed / HAPPINESS_DECAY_RATE * 10) ?
+            pet.lastHappiness - (timeSincePlayed / HAPPINESS_DECAY_RATE * 10) : 0;
+        
+        return pet.isAlive && currentHunger < 100 && currentHappiness > 0;
+    }
+    
+    function getBaseStats(PetType petType) public pure returns (PetStats memory) {
+        if (petType == PetType.Fire) return PetStats(15, 10, 12, 100);
+        if (petType == PetType.Water) return PetStats(12, 15, 10, 110);
+        if (petType == PetType.Grass) return PetStats(10, 12, 15, 105);
+        if (petType == PetType.Electric) return PetStats(14, 8, 18, 90);
+        if (petType == PetType.Dragon) return PetStats(18, 14, 14, 120);
+        return PetStats(10, 10, 10, 100); // Normal
+    }
+    
+    function getEnhancedPetStats(address owner) public view returns (PetStats memory) {
+        Pet memory pet = pets[owner];
+        Equipment memory equipment = playerEquipment[owner];
+        
+        uint256 totalAttack = pet.attack;
+        uint256 totalDefense = pet.defense;
+        uint256 totalSpeed = pet.speed;
+        uint256 totalHealth = pet.maxHealth;
+        
+        // Add equipment bonuses
+        if (equipment.weapon != 0) {
+            Item memory weapon = items[equipment.weapon];
+            totalAttack += weapon.attackBonus;
+            totalDefense += weapon.defenseBonus;
+            totalSpeed += weapon.speedBonus;
+            totalHealth += weapon.healthBonus;
+        }
+        
+        if (equipment.armor != 0) {
+            Item memory armor = items[equipment.armor];
+            totalAttack += armor.attackBonus;
+            totalDefense += armor.defenseBonus;
+            totalSpeed += armor.speedBonus;
+            totalHealth += armor.healthBonus;
+        }
+        
+        // Add accessory bonuses
+        uint256[3] memory accessories = [
+            equipment.accessory1,
+            equipment.accessory2,
+            equipment.accessory3
+        ];
+        
+        for (uint i = 0; i < 3; i++) {
+            if (accessories[i] != 0) {
+                Item memory accessory = items[accessories[i]];
+                totalAttack += accessory.attackBonus;
+                totalDefense += accessory.defenseBonus;
+                totalSpeed += accessory.speedBonus;
+                totalHealth += accessory.healthBonus;
+            }
+        }
+        
+        // Apply active effects
+        for (uint i = 0; i < activeEffects[owner].length; i++) {
+            ActiveEffect memory effect = activeEffects[owner][i];
+            if (block.timestamp <= effect.endTime) {
+                if (effect.effectType == EffectType.BoostAttack) {
+                    totalAttack += effect.value;
+                } else if (effect.effectType == EffectType.BoostDefense) {
+                    totalDefense += effect.value;
+                } else if (effect.effectType == EffectType.BoostSpeed) {
+                    totalSpeed += effect.value;
+                }
+            }
+        }
+        
+        return PetStats(totalAttack, totalDefense, totalSpeed, totalHealth);
     }
     
     // ============ View Functions ============
     
-    function getPetStats(address _owner) external view returns (
+    function getPetStats(address owner) external view returns (
         string memory name,
-        PetType petType,
         uint256 level,
         uint256 experience,
         uint256 happiness,
         uint256 hunger,
-        uint256 health,
-        bool isAlive
+        bool isAlive,
+        uint8 petType,
+        uint8 evolutionStage
     ) {
-        Pet memory pet = pets[_owner];
+        Pet memory pet = pets[owner];
         
-        uint256 currentHunger = pet.lastHunger;
-        uint256 currentHappiness = pet.lastHappiness;
-        bool currentlyAlive = pet.isAlive;
+        uint256 timeSinceFed = block.timestamp - pet.lastFed;
+        uint256 timeSincePlayed = block.timestamp - pet.lastPlayed;
         
-        if (pet.isAlive) {
-            uint256 timeSinceLastFed = block.timestamp - pet.lastFed;
-            uint256 timeSinceLastPlayed = block.timestamp - pet.lastPlayed;
-            
-            currentHunger = min(100, pet.lastHunger + (timeSinceLastFed / HUNGER_INCREASE_RATE) * 10);
-            uint256 happinessDecrease = (timeSinceLastPlayed / HAPPINESS_DECAY_RATE) * 10;
-            currentHappiness = pet.lastHappiness > happinessDecrease ? pet.lastHappiness - happinessDecrease : 0;
-            
-            currentlyAlive = currentHunger < 100 && currentHappiness > 0 && pet.health > 0;
-        }
+        uint256 currentHunger = pet.lastHunger + (timeSinceFed / HUNGER_INCREASE_RATE * 10);
+        currentHunger = currentHunger > 100 ? 100 : currentHunger;
+        
+        uint256 currentHappiness = pet.lastHappiness > (timeSincePlayed / HAPPINESS_DECAY_RATE * 10) ?
+            pet.lastHappiness - (timeSincePlayed / HAPPINESS_DECAY_RATE * 10) : 0;
         
         return (
             pet.name,
-            pet.petType,
             pet.level,
             pet.experience,
             currentHappiness,
             currentHunger,
-            pet.health,
-            currentlyAlive
+            isPetAlive(owner),
+            uint8(pet.petType),
+            pet.evolutionStage
         );
     }
     
-    function getInventory(address _owner) external view returns (
-        uint256 coins,
+    function getInventory(address owner) external view returns (
         uint256 basicFood,
-        uint256 rareFood,
-        uint256 toys,
-        uint256 healthPotions
+        uint256 coins,
+        uint256 healthPotions,
+        uint256 reviveTokens,
+        uint256 experienceBoosts
     ) {
-        Inventory storage inv = inventories[_owner];
-        return (
-            inv.coins,
-            inv.items[ItemType.BasicFood],
-            inv.items[ItemType.RareFood],
-            inv.items[ItemType.Toy],
-            inv.items[ItemType.HealthPotion]
-        );
+        Inventory memory inv = inventories[owner];
+        return (inv.basicFood, inv.coins, inv.healthPotions, inv.reviveTokens, inv.experienceBoosts);
+    }
+    
+    function getEquippedItems(address owner) external view returns (
+        uint256 weapon,
+        uint256 armor,
+        uint256 accessory1,
+        uint256 accessory2,
+        uint256 accessory3
+    ) {
+        Equipment memory eq = playerEquipment[owner];
+        return (eq.weapon, eq.armor, eq.accessory1, eq.accessory2, eq.accessory3);
+    }
+    
+    function getItemBalance(address owner, uint256 itemId) external view returns (uint256) {
+        return playerItems[owner][itemId];
+    }
+    
+    // Admin function for testing
+    function addItemToInventory(address player, uint256 itemId, uint256 quantity) external {
+        playerItems[player][itemId] += quantity;
     }
 }
